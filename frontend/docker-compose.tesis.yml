@@ -1,0 +1,12 @@
+services:
+  frontend:
+    build: .
+    container_name: decoupled-frontend-tesis
+    restart: always
+    ports:
+      - "4173:5173"
+    environment:
+      - VITE_API_URL=http://localhost:5001
+    volumes:
+      - .:/app
+      - /app/node_modules
