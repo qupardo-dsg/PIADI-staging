@@ -1,5 +1,7 @@
 const { AppError } = require('../utils/errors');
 
+const INTERNAL_ERROR_MESSAGE = 'Error interno, contacte al administrador';
+
 const translateValidationError = (e) => {
   let msg = e.message;
   if (!msg) return msg;
@@ -27,6 +29,9 @@ const translateValidationError = (e) => {
     const maxVal = e.validatorArgs && e.validatorArgs[0] !== undefined ? e.validatorArgs[0] : '';
     return `El valor del campo ${e.path} debe ser menor o igual a ${maxVal}`;
   }
+  if (/sql|sequelize|constraint|query|stack| at |\\|\//i.test(msg)) {
+    return `El valor del campo ${e.path || 'indicado'} no es válido`;
+  }
   return msg;
 };
 
@@ -40,8 +45,13 @@ const errorHandler = (err, req, res, next) => {
   console.error(err);
   console.error('----------------------');
 
-  let statusCode = err.statusCode || err.status || 500;
-  let errorMessage = err.message || 'Error interno del servidor';
+  const declaredStatus = Number(err.statusCode || err.status);
+  let statusCode = Number.isInteger(declaredStatus) && declaredStatus >= 400 && declaredStatus < 500
+    ? declaredStatus
+    : 500;
+  let errorMessage = err instanceof AppError || statusCode < 500
+    ? err.message
+    : INTERNAL_ERROR_MESSAGE;
 
   // 2. Manejo de error de formato JSON inválido (body-parser de Express)
   if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
@@ -53,29 +63,20 @@ const errorHandler = (err, req, res, next) => {
   
   // A. Error de Validación de Sequelize (Restricciones del modelo en JS)
   if (err.name === 'SequelizeValidationError') {
-    statusCode = 400;
+    statusCode = 422;
     errorMessage = err.errors.map(translateValidationError).join('. ');
   }
 
   // B. Error de Restricción Única de Sequelize (Duplicados en BD)
   if (err.name === 'SequelizeUniqueConstraintError') {
     statusCode = 409;
-    // Intentar dar un mensaje descriptivo o usar uno amigable por defecto
-    const camposDuplicados = err.errors.map(e => e.path).join(', ');
-    errorMessage = `El registro ya existe. Conflicto de unicidad en campo(s): ${camposDuplicados}`;
+    errorMessage = 'El registro ya existe y no puede duplicarse.';
   }
 
   // C. Error de Clave Foránea de Sequelize (Relación rota en BD)
   if (err.name === 'SequelizeForeignKeyConstraintError') {
-    statusCode = 400;
-    let detail = err.parent ? err.parent.detail : '';
-    if (detail) {
-      detail = detail
-        .replace(/Key \((.*?)\)=\((.*?)\) is not present in table "(.*?)"\./g, 'La clave ($1)=($2) no existe en la tabla "$3".')
-        .replace(/Key \((.*?)\)=\((.*?)\) is still referenced from table "(.*?)"\./g, 'La clave ($1)=($2) todavía está referenciada por la tabla "$3".');
-    }
-    const tabla = err.table ? ` en la tabla "${err.table}"` : '';
-    errorMessage = `Error de integridad referencial${tabla}. ${detail ? `Detalle: ${detail}` : 'El registro al que intentas hacer referencia no existe.'}`;
+    statusCode = 409;
+    errorMessage = 'No se puede completar la operación porque existen datos relacionados.';
   }
 
   // D. Error de conexión con la Base de Datos (Ampliado)
@@ -89,7 +90,7 @@ const errorHandler = (err, req, res, next) => {
   ];
   if (dbErrors.includes(err.name)) {
     statusCode = 500;
-    errorMessage = 'No se pudo establecer conexión o comunicación con la base de datos.';
+    errorMessage = INTERNAL_ERROR_MESSAGE;
   }
 
   // E. Errores de Autenticación de JWT nativos
@@ -104,8 +105,8 @@ const errorHandler = (err, req, res, next) => {
 
   // F. Errores de Carga de Archivos (MulterError)
   if (err.name === 'MulterError') {
-    statusCode = 400;
-    errorMessage = `Error al subir archivo: ${err.message}`;
+    statusCode = 422;
+    errorMessage = 'No se pudo validar el archivo enviado.';
     if (err.code === 'LIMIT_FILE_SIZE') {
       errorMessage = 'Error al subir archivo: El tamaño del archivo excede el límite permitido.';
     } else if (err.code === 'LIMIT_UNEXPECTED_FIELD') {
@@ -114,14 +115,38 @@ const errorHandler = (err, req, res, next) => {
   }
 
   // E. Error de Carga Masiva / Validación Múltiple de Sequelize (BulkRecordError / AggregateError)
+  let errorsResponse = null;
+
+  if (err.name === 'SequelizeValidationError') {
+    errorsResponse = err.errors.map(errItem => {
+      const msg = translateValidationError(errItem);
+      return {
+        message: msg,
+        hoja: errItem.hoja || 'General',
+        fila: errItem.fila || '',
+        columna: errItem.columna || errItem.path || '',
+        celda: errItem.celda || ''
+      };
+    });
+  }
+
   if (err.name === 'SequelizeBulkRecordError' || err.name === 'AggregateError') {
-    statusCode = 400;
+    statusCode = 422;
     const errorsList = [];
 
     const collectErrors = (e) => {
       if (!e) return;
       if (e.name === 'SequelizeValidationError' && e.errors) {
-        e.errors.forEach(errItem => errorsList.push(translateValidationError(errItem)));
+        e.errors.forEach(errItem => {
+          const translatedMsg = translateValidationError(errItem);
+          errorsList.push({
+            message: translatedMsg,
+            hoja: errItem.hoja || 'General',
+            fila: errItem.fila || '',
+            columna: errItem.columna || errItem.path || '',
+            celda: errItem.celda || ''
+          });
+        });
       } else if (e.errors) {
         if (Array.isArray(e.errors)) {
           e.errors.forEach(sub => collectErrors(sub));
@@ -129,27 +154,62 @@ const errorHandler = (err, req, res, next) => {
           collectErrors(e.errors);
         }
       } else if (e.message && e.message.includes('Validation error:')) {
-        errorsList.push(e.message.replace('Validation error:', '').trim());
+        const message = translateValidationError({ ...e, message: e.message.replace('Validation error:', '').trim() });
+        errorsList.push({
+          message,
+          hoja: e.hoja || 'General',
+          fila: e.fila || '',
+          columna: e.columna || e.path || '',
+          celda: e.celda || ''
+        });
       } else if (e.message) {
-        errorsList.push(e.message);
+        errorsList.push({
+          message: 'Uno de los registros contiene datos inválidos.',
+          hoja: e.hoja || 'General',
+          fila: e.fila || '',
+          columna: e.columna || '',
+          celda: e.celda || ''
+        });
       }
     };
 
     collectErrors(err);
 
-    if (errorsList.length > 0) {
-      errorMessage = `Error de validación en carga: ${[...new Set(errorsList)].join('. ')}`;
+    // Keep unique errors by message
+    const uniqueMap = new Map();
+    for (const item of errorsList) {
+      if (!uniqueMap.has(item.message)) {
+        uniqueMap.set(item.message, item);
+      }
+    }
+    const uniqueErrorsList = [...uniqueMap.values()];
+
+    if (uniqueErrorsList.length > 0) {
+      errorMessage = `Error de validación en carga: ${uniqueErrorsList.map(x => x.message).join('. ')}`;
+      errorsResponse = uniqueErrorsList;
     } else {
       errorMessage = 'Error de validación en los registros de la carga.';
     }
   }
 
-  // 3. Respuesta compatible con el Frontend (Retorna llave "error")
-  res.status(statusCode).json({
+  if (statusCode >= 500) {
+    statusCode = 500;
+    errorMessage = INTERNAL_ERROR_MESSAGE;
+    errorsResponse = null;
+  }
+
+  // 3. Respuesta pública compatible con el Frontend
+  const jsonResponse = {
     error: errorMessage,
-    success: false, // Extra para utilidades del frontend
-    errorType: err.name || 'InternalServerError' // Extra informativo
-  });
+    success: false
+  };
+
+  if (errorsResponse) {
+    jsonResponse.errores = errorsResponse;
+  }
+
+  res.status(statusCode).json(jsonResponse);
 };
 
 module.exports = errorHandler;
+module.exports.INTERNAL_ERROR_MESSAGE = INTERNAL_ERROR_MESSAGE;

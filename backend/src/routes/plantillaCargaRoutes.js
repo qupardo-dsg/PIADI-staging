@@ -10,13 +10,15 @@ const uploadMemoria = multer({ storage: storageMemoria });
 const plantillaController = require('../controllers/plantillaController');
 const auditLogger = require('../middleware/auditLogger');
 const { authenticateToken } = require('../middleware/authMiddleware');
+const { requireVcmUploadRole } = require('../middleware/vcmUploadAuthorization');
 
 /**
  * @openapi
  * /api/plantillas/{id}/cargar:
  *   post:
  *     tags: [Plantillas]
- *     summary: Carga un archivo Excel y procesa los datos según la plantilla
+ *     summary: Carga un archivo Excel y procesa los datos según la plantilla, incluida VCM
+ *     description: El id corresponde a una plantilla registrada. Para VCM, use el id de la plantilla Vinculación Con El Medio; sus hojas y columnas se resuelven desde campos_plantilla.
  *     parameters:
  *       - in: path
  *         name: id
@@ -33,13 +35,14 @@ const { authenticateToken } = require('../middleware/authMiddleware');
  *               archivo:
  *                 type: string
  *                 format: binary
+ *             required: [archivo]
  *     responses:
  *       200:
  *         description: Carga exitosa.
- *       400:
+ *       422:
  *         description: Error de validación del archivo.
  */
-router.post('/:id/cargar', authenticateToken, upload.single('archivo'), auditLogger({ type: 'carga', action: 'UPLOAD_TEMPLATE', module: 'Carga de Datos', entity: 'Plantilla' }), plantillaController.cargarArchivo);
+router.post('/:id/cargar', authenticateToken, requireVcmUploadRole, upload.single('archivo'), auditLogger({ type: 'carga', action: 'UPLOAD_TEMPLATE', module: 'Carga de Datos', entity: 'Plantilla' }), plantillaController.cargarArchivo);
 
 /**
  * @openapi

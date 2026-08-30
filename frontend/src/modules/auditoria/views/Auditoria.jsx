@@ -52,6 +52,7 @@ import {
   Description as DescriptionIcon,
   ExpandMore as ExpandMoreIcon,
   Close as CloseIcon,
+  Adjust as TargetIcon,
 } from '@mui/icons-material';
 
 export const Auditoria = () => {
@@ -156,6 +157,7 @@ export const Auditoria = () => {
           {[
             { text: 'Inicio', icon: <HomeIcon />, path: '/' },
             { text: 'Dashboards', icon: <DashboardIcon />, path: '/dashboard' },
+            { text: 'Metas', icon: <TargetIcon />, path: '/metas' },
             { text: 'Carga de datos', icon: <CargaIcon />, path: '/carga-datos' },
             { text: 'Auditoría', icon: <AuditoriaIcon />, path: '/auditoria' },
           ].filter((item) => {
@@ -281,6 +283,17 @@ export const Auditoria = () => {
         
         {/* Cabecera del Panel Principal */}
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+          {/* Breadcrumbs de orientación */}
+          <Box sx={styles.breadcrumbsContainer}>
+            <Typography variant="body1" sx={{ cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }} onClick={() => navigate('/')}>
+              Inicio
+            </Typography>
+            <ChevronRightIcon sx={{ fontSize: '16px', opacity: 0.7 }} />
+            <Typography variant="body1" sx={{ color: '#1E2875', fontWeight: 600 }}>
+              Auditoría
+            </Typography>
+          </Box>
+
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2, width: '100%' }}>
             <Box sx={styles.panelHeader}>
               <Box sx={styles.panelIconContainer}>
@@ -295,17 +308,6 @@ export const Auditoria = () => {
                 </Typography>
               </Box>
             </Box>
-          </Box>
-
-          {/* Breadcrumbs de orientación */}
-          <Box sx={styles.breadcrumbsContainer}>
-            <Typography variant="body1" sx={{ cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }} onClick={() => navigate('/')}>
-              Inicio
-            </Typography>
-            <ChevronRightIcon sx={{ fontSize: '16px', opacity: 0.7 }} />
-            <Typography variant="body1" sx={{ color: '#1E2875', fontWeight: 600 }}>
-              Auditoría
-            </Typography>
           </Box>
         </Box>
 

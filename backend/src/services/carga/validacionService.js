@@ -1,5 +1,28 @@
 const XLSX = require('xlsx');
-const { CampoPlantilla } = require('../../models');
+const { CampoPlantilla, sequelize } = require('../../models');
+
+const estaVacio = (valor) => valor === null ||
+  valor === undefined ||
+  (typeof valor === 'string' && valor.trim() === '');
+
+const esTipoCompatible = (valor, tipoDato) => {
+  const tipo = String(tipoDato || '').trim().toLowerCase();
+
+  if (tipo === 'number') {
+    if (typeof valor === 'number') return Number.isFinite(valor);
+    if (typeof valor !== 'string' || valor.trim() === '') return false;
+    return Number.isFinite(Number(valor.trim()));
+  }
+
+  if (tipo === 'string') {
+    return typeof valor === 'string' ||
+      typeof valor === 'number' ||
+      typeof valor === 'boolean' ||
+      (valor instanceof Date && !Number.isNaN(valor.getTime()));
+  }
+
+  return true;
+};
 
 const validarArchivo = async (filePath, plantillaId) => {
   const campos = await CampoPlantilla.findAll({
@@ -67,17 +90,13 @@ const validarArchivo = async (filePath, plantillaId) => {
     });
     const columnasRequeridasPresentes = [...columnasUnicas.values()];
     
-    datos.forEach((fila, index) => {
+    for (const [index, fila] of datos.entries()) {
       const numeroFilaExcel = index + 2; // Fila 1 es el encabezado en Excel
       for (const campo of columnasRequeridasPresentes) {
         const valorCelda = fila[campo.columna_excel];
         
         // Comprobar si el valor es null, undefined, o un string vacío tras hacer trim
-        const estaVacio = valorCelda === null || 
-                          valorCelda === undefined || 
-                          (typeof valorCelda === 'string' && valorCelda.trim() === '');
-                          
-        if (estaVacio) {
+        if (estaVacio(valorCelda)) {
           errores.push({
             hoja: nombreHoja,
             campo: campo.columna_excel,
@@ -86,7 +105,102 @@ const validarArchivo = async (filePath, plantillaId) => {
           });
         }
       }
-    });
+
+      // Validar las reglas del modelo en memoria (ej: formato RUT, formato email, fechas, etc.)
+      const dataByTable = {};
+      const tiposValidados = new Set();
+      for (const campo of camposDeHoja) {
+        if (!dataByTable[campo.tabla_destino]) {
+          dataByTable[campo.tabla_destino] = {};
+        }
+        let valor = fila[campo.columna_excel];
+
+        const tipoKey = `${campo.columna_excel}:${campo.tipo_dato}`;
+        if (!estaVacio(valor) && !tiposValidados.has(tipoKey)) {
+          tiposValidados.add(tipoKey);
+          if (!esTipoCompatible(valor, campo.tipo_dato)) {
+            errores.push({
+              hoja: nombreHoja,
+              campo: campo.columna_excel,
+              fila: numeroFilaExcel,
+              mensaje: `Fila ${numeroFilaExcel}: El campo ${campo.columna_excel} debe ser de tipo ${campo.tipo_dato} en la hoja ${nombreHoja}`
+            });
+          }
+        }
+
+        // Normalizar fechas antes de la validación en memoria
+        const Model = sequelize.models[campo.tabla_destino];
+        if (Model) {
+          const attrType = Model.rawAttributes[campo.columna_destino];
+          if (attrType) {
+            const typeKey = attrType.type && (attrType.type.key || (attrType.type.constructor && attrType.type.constructor.name));
+            if (typeKey === 'DATEONLY' || typeKey === 'DATE') {
+              // DD-MM-YYYY o DD/MM/YYYY → YYYY-MM-DD
+              if (typeof valor === 'string') {
+                const matchDMY = valor.match(/^(\d{2})[\/-](\d{2})[\/-](\d{4})$/);
+                if (matchDMY) {
+                  valor = `${matchDMY[3]}-${matchDMY[2]}-${matchDMY[1]}`;
+                }
+              }
+              // Número serial de Excel → YYYY-MM-DD
+              if (typeof valor === 'number' && valor > 40000 && valor < 60000) {
+                const fecha = new Date((valor - 25569) * 86400 * 1000);
+                valor = fecha.toISOString().split('T')[0];
+              }
+            }
+          }
+        }
+
+        dataByTable[campo.tabla_destino][campo.columna_destino] = valor;
+      }
+
+      for (const [tabla, registro] of Object.entries(dataByTable)) {
+        const Model = sequelize.models[tabla];
+        if (!Model) continue;
+
+        const instance = Model.build(registro);
+        try {
+          await instance.validate();
+        } catch (err) {
+          if (err.errors) {
+            for (const errItem of err.errors) {
+              const campoConfig = camposDeHoja.find(c => c.columna_destino === errItem.path && c.tabla_destino === tabla);
+              const campoExcel = campoConfig ? campoConfig.columna_excel : errItem.path;
+
+              let cleanMsg = errItem.message;
+              if (cleanMsg.includes('cannot be null')) {
+                cleanMsg = `El campo ${campoExcel} no puede ser nulo o estar vacío`;
+              } else if (cleanMsg.includes('Validation notEmpty on') && cleanMsg.includes('failed')) {
+                cleanMsg = `El campo ${campoExcel} no puede estar vacío`;
+              } else if (cleanMsg.includes('Validation is on') && cleanMsg.includes('failed')) {
+                cleanMsg = `El formato o valor del campo ${campoExcel} no es válido`;
+              } else if (cleanMsg.includes('Validation isEmail on') && cleanMsg.includes('failed')) {
+                cleanMsg = `El formato del correo electrónico ingresado no es válido`;
+              } else if (cleanMsg.includes('Validation min on') && cleanMsg.includes('failed')) {
+                const minVal = errItem.validatorArgs && errItem.validatorArgs[0] !== undefined ? errItem.validatorArgs[0] : '';
+                cleanMsg = `El valor del campo ${campoExcel} debe ser mayor o igual a ${minVal}`;
+              } else if (cleanMsg.includes('Validation max on') && cleanMsg.includes('failed')) {
+                const maxVal = errItem.validatorArgs && errItem.validatorArgs[0] !== undefined ? errItem.validatorArgs[0] : '';
+                cleanMsg = `El valor del campo ${campoExcel} debe ser menor o igual a ${maxVal}`;
+              } else if (cleanMsg.toLowerCase().includes('failed') || cleanMsg.toLowerCase().includes('invalid') || cleanMsg.toLowerCase().includes('no es válido')) {
+                cleanMsg = cleanMsg.replace(errItem.path || '', campoExcel);
+              }
+
+              // Evitar duplicar mensajes por celdas vacías (si ya se reportaron en el paso estructural)
+              const isDuplicate = errores.some(e => e.hoja === nombreHoja && e.campo === campoExcel && e.fila === numeroFilaExcel);
+              if (!isDuplicate) {
+                errores.push({
+                  hoja: nombreHoja,
+                  campo: campoExcel,
+                  fila: numeroFilaExcel,
+                  mensaje: `Fila ${numeroFilaExcel}: ${cleanMsg}`
+                });
+              }
+            }
+          }
+        }
+      }
+    }
   }
 
   return {

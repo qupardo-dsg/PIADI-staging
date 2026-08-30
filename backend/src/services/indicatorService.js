@@ -94,10 +94,47 @@ const aggregateParticipant = (rows) => {
   return { participantesUnicos: unicos.size, participantesRecurrentes: recurrentes.size };
 };
 
-const aggregate = (config, rows) => (config.kind === 'participant' ? aggregateParticipant(rows) : aggregateProgram(rows));
+const aggregateVcmConvenio = (rows) => ({
+  conveniosCount: rows.length,
+  conveniosActivosCount: rows.filter((r) => r.activo).length
+});
 
-const getRows = (config, filters) =>
-  (config.kind === 'participant' ? provider.getParticipantRows(filters) : provider.getProgramRows(filters));
+const aggregateVcmActividad = (rows) => ({
+  actividadesCount: rows.length
+});
+
+const aggregateVcmParticipacion = (rows) => ({
+  participantesSum: rows.reduce((sum, r) => sum + (r.totalPersonas || 0), 0)
+});
+
+const aggregateVcmArticulacion = (rows) => ({
+  articulacionesCount: rows.length
+});
+
+const aggregateVcmProyecto = (rows) => ({
+  proyectosCount: rows.length,
+  financiamientoSum: rows.reduce((sum, r) => sum + (r.montoFinanciado || 0), 0)
+});
+
+const aggregate = (config, rows) => {
+  if (config.kind === 'participant') return aggregateParticipant(rows);
+  if (config.kind === 'vcm_convenio') return aggregateVcmConvenio(rows);
+  if (config.kind === 'vcm_actividad') return aggregateVcmActividad(rows);
+  if (config.kind === 'vcm_participacion') return aggregateVcmParticipacion(rows);
+  if (config.kind === 'vcm_articulacion') return aggregateVcmArticulacion(rows);
+  if (config.kind === 'vcm_proyecto') return aggregateVcmProyecto(rows);
+  return aggregateProgram(rows);
+};
+
+const getRows = (config, filters) => {
+  if (config.kind === 'participant') return provider.getParticipantRows(filters);
+  if (config.kind === 'vcm_convenio') return provider.getVcmConvenioRows(filters);
+  if (config.kind === 'vcm_actividad') return provider.getVcmActividadRows(filters);
+  if (config.kind === 'vcm_participacion') return provider.getVcmParticipacionRows(filters);
+  if (config.kind === 'vcm_articulacion') return provider.getVcmArticulacionRows(filters);
+  if (config.kind === 'vcm_proyecto') return provider.getVcmProyectoRows(filters);
+  return provider.getProgramRows(filters);
+};
 
 const computeFromRows = (config, definition, rows) => {
   if (!rows || rows.length === 0) {
@@ -255,6 +292,32 @@ const getIndicatorBreakdown = async (indicatorKey, query = {}) => {
   const groupBy = validateGroupBy(config, filters.groupBy);
 
   const rows = await getRows(config, filters);
+
+  // Custom handler for VCM participaciones grouped by sex
+  if (config.kind === 'vcm_participacion' && groupBy === 'sexo') {
+    const totalMujeres = rows.reduce((sum, r) => sum + (r.mujeres || 0), 0);
+    const totalHombres = rows.reduce((sum, r) => sum + (r.hombres || 0), 0);
+    const totalNoInforma = rows.reduce((sum, r) => sum + (r.noInforma || 0), 0);
+    
+    const items = [];
+    if (totalMujeres > 0) items.push({ label: 'mujeres', value: totalMujeres });
+    if (totalHombres > 0) items.push({ label: 'hombres', value: totalHombres });
+    if (totalNoInforma > 0) items.push({ label: 'noInforma', value: totalNoInforma });
+    items.sort((a, b) => b.value - a.value);
+
+    return {
+      data: {
+        indicatorKey: key,
+        department: departmentId,
+        groupBy,
+        items,
+        hasData: items.length > 0,
+        filters: buildFilterMeta(filters),
+        meta: { source: 'postgresql', formulaKey: definition.formulaKey }
+      }
+    };
+  }
+
   const groups = groupRowsBy(rows, groupBy);
   const items = [];
   [...groups.keys()].forEach((label) => {
@@ -394,6 +457,27 @@ const getEnabledKpis = async (departmentKey) => {
   return kpis.filter((kpi) => kpi.enabled !== false);
 };
 
+const getIndicatorDetail = async (indicatorKey) => {
+  const key = ensureIndicatorKey(indicatorKey);
+  const kpi = await provider.getKpi('institucional', key);
+  if (!kpi) {
+    throw new ServiceError(404, 'KPI_NOT_FOUND', 'El indicador solicitado no existe', { indicatorKey: key });
+  }
+  return {
+    data: {
+      key: kpi.key,
+      name: kpi.name,
+      title: kpi.name,
+      description: kpi.description,
+      unit: kpi.unit,
+      format: kpi.format,
+      formulaKey: kpi.formulaKey,
+      departmentId: kpi.departmentId,
+      enabled: kpi.enabled
+    }
+  };
+};
+
 module.exports = {
   ServiceError,
   parseYear,
@@ -408,6 +492,7 @@ module.exports = {
   updateKpi,
   deleteKpi,
   getEnabledKpis,
+  getIndicatorDetail,
   getDepartmentFilters,
   getIndicatorValue,
   getIndicatorSeries,

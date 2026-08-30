@@ -38,7 +38,8 @@ import { LoginPage, useAuth } from './modules/auth';
 import { LandingPage } from './modules/landing_page';
 import { CargaDatos, RepositorioArchivos } from './modules/carga_datos';
 import { Auditoria } from './modules/auditoria';
-import { CentralDashboards, DashboardEducacionContinua } from './modules/central_dashboards';
+import { CentralDashboards, DashboardEducacionContinua, DashboardVcM } from './modules/central_dashboards';
+import { VisualizacionMetas, MetaForm, MetaEditForm } from './modules/metas';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 
 const API_URL = import.meta.env.VITE_API_URL || 
@@ -476,6 +477,19 @@ function App() {
             />
 
             {/* 
+               RUTA: /dashboard-vcm
+               Muestra el dashboard específico de Vinculación con el Medio (VcM) con filtros estáticos.
+            */}
+            <Route 
+              path="/dashboard-vcm" 
+              element={
+                <ProtectedRoute>
+                  <DashboardVcM />
+                </ProtectedRoute>
+              } 
+            />
+
+            {/* 
                RUTA: /dashboard-crud
                Conserva la interfaz CRUD anterior de PostgreSQL y monitoreo técnico.
             */}
@@ -510,6 +524,39 @@ function App() {
               element={
                 <ProtectedRoute>
                   <RepositorioArchivos />
+                </ProtectedRoute>
+              } 
+            />
+
+            {/* 
+              RUTA: /metas
+              Ruta protegida para la vista de Visualización de Metas.
+            */}
+            <Route 
+              path="/metas" 
+              element={
+                <ProtectedRoute>
+                  <VisualizacionMetas />
+                </ProtectedRoute>
+              } 
+            />
+
+            {/* 
+              RUTA: /meta-form (Crear y editar metas)
+            */}
+            <Route 
+              path="/meta-form" 
+              element={
+                <ProtectedRoute>
+                  <MetaForm />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/meta-form/:id" 
+              element={
+                <ProtectedRoute>
+                  <MetaEditForm />
                 </ProtectedRoute>
               } 
             />

@@ -11,6 +11,8 @@ const plantillaCargaRoutes = require('./routes/plantillaCargaRoutes');
 const indicatorRoutes = require('./routes/indicatorRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
 const auditRoutes = require('./routes/auditRoutes');
+const metaRoutes = require('./routes/metaRoutes');
+const landingRoutes = require('./routes/landingRoutes');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
@@ -36,6 +38,8 @@ app.use('/api/plantillas', plantillaCargaRoutes);
 app.use('/api', indicatorRoutes);
 app.use('/api', dashboardRoutes);
 app.use('/api', auditRoutes);
+app.use('/api/metas', metaRoutes);
+app.use('/api/landing', landingRoutes);
 
 // Registar Middleware Centralizado de Errores (Siempre después de las rutas)
 app.use(errorHandler);
@@ -50,6 +54,9 @@ async function initDb(retries = 5, delay = 2000) {
       
       await sequelize.sync();
       console.log('Database synced successfully. Models mapped to tables.');
+      
+      const { initDbConstraints } = require('./services/dbConstraints');
+      await initDbConstraints();
       
       const { seedDatabase } = require('./services/dbSeeder');
       await seedDatabase();

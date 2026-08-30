@@ -30,6 +30,8 @@ import {
   AccordionSummary,
   AccordionDetails,
   Grid,
+  Tooltip,
+  Collapse,
 } from '@mui/material';
 import {
   Home as HomeIcon,
@@ -51,6 +53,7 @@ import {
   ChevronLeft as ChevronLeftIcon,
   ExpandMore as ExpandMoreIcon,
   Download as DownloadIcon,
+  Adjust as TargetIcon,
 } from '@mui/icons-material';
 
 export const CargaDatos = () => {
@@ -87,7 +90,15 @@ export const CargaDatos = () => {
     handleDrop,
     handleCloseDialog,
     handleUploadSubmit,
+    handleRetryUpload,
+    selectedTemplateMetadata,
   } = useCargaDatos();
+
+  const [showMetadataHelp, setShowMetadataHelp] = React.useState(true);
+
+  React.useEffect(() => {
+    setShowMetadataHelp(true);
+  }, [selectedTemplate]);
 
   // Paginación lógica simple de cargas (5 por página)
   const itemsPerPage = 5;
@@ -130,6 +141,7 @@ export const CargaDatos = () => {
           {[
             { text: 'Inicio', icon: <HomeIcon />, path: '/' },
             { text: 'Dashboards', icon: <DashboardIcon />, path: '/dashboard' },
+            { text: 'Metas', icon: <TargetIcon />, path: '/metas' },
             { text: 'Carga de datos', icon: <CargaIcon />, path: '/carga-datos' },
             { text: 'Auditoría', icon: <AuditoriaIcon />, path: '/auditoria' },
           ].filter((item) => {
@@ -255,15 +267,33 @@ export const CargaDatos = () => {
           ========================================================================= */}
       <Box sx={styles.contentArea}>
         
-        {/* Fila superior: Cabecera con Sesión Activa */}
-        <Box sx={styles.headerRow}>
-          <Box>
-            <Typography variant="h5" sx={styles.panelTitle}>
+        {/* Cabecera del Panel Principal */}
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+          {/* Breadcrumbs */}
+          <Box sx={styles.breadcrumbsContainer}>
+            <Typography variant="body1" sx={{ cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }} onClick={() => navigate('/')}>
+              Inicio
+            </Typography>
+            <ChevronRightIcon sx={{ fontSize: '16px', opacity: 0.7 }} />
+            <Typography variant="body1" sx={{ color: '#1E2875', fontWeight: 600 }}>
               Carga de datos
             </Typography>
-            <Typography variant="body2" sx={{ color: '#64748b', mt: 0.5 }}>
-              Sube y actualiza los indicadores institucionales mediante archivos de plantilla.
-            </Typography>
+          </Box>
+
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2, width: '100%' }}>
+            <Box sx={styles.panelHeader}>
+              <Box sx={styles.panelIconContainer}>
+                <CargaIcon />
+              </Box>
+              <Box>
+                <Typography variant="h5" sx={styles.panelTitle}>
+                  Carga de datos
+                </Typography>
+                <Typography variant="body2" sx={{ color: '#6B7280' }}>
+                  Sube y actualiza los indicadores institucionales mediante archivos de plantilla.
+                </Typography>
+              </Box>
+            </Box>
           </Box>
         </Box>
 
@@ -377,29 +407,36 @@ export const CargaDatos = () => {
           </Box>
 
           {/* Controles de Paginación */}
-          <Box sx={styles.paginationRow}>
-            <Typography sx={styles.paginationText}>
-              Página {currentPage} de {totalPages} ({uploads.length} cargas en total)
-            </Typography>
-            <Box sx={styles.paginationButtons}>
-              <IconButton 
-                size="small" 
-                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                disabled={currentPage === 1}
-                sx={styles.paginationIconButton}
-              >
-                <ChevronLeftIcon />
-              </IconButton>
-              <IconButton 
-                size="small"
-                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                disabled={currentPage === totalPages}
-                sx={styles.paginationIconButton}
-              >
-                <ChevronRightIcon />
-              </IconButton>
+          {uploads.length > 0 && (
+            <Box sx={styles.paginationRow}>
+              <Typography sx={styles.paginationText}>
+                {totalPages > 1 
+                  ? `Página ${currentPage} de ${totalPages} (${uploads.length} cargas en total)`
+                  : `${uploads.length} ${uploads.length === 1 ? 'carga registrada' : 'cargas registradas'}`
+                }
+              </Typography>
+              {totalPages > 1 && (
+                <Box sx={styles.paginationButtons}>
+                  <IconButton 
+                    size="small" 
+                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                    disabled={currentPage === 1}
+                    sx={styles.paginationIconButton}
+                  >
+                    <ChevronLeftIcon />
+                  </IconButton>
+                  <IconButton 
+                    size="small"
+                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                    disabled={currentPage === totalPages}
+                    sx={styles.paginationIconButton}
+                  >
+                    <ChevronRightIcon />
+                  </IconButton>
+                </Box>
+              )}
             </Box>
-          </Box>
+          )}
         </Card>
       </Box>
 
@@ -601,6 +638,60 @@ export const CargaDatos = () => {
                   );
                 })}
               </Box>
+              
+              {selectedTemplateMetadata && (
+                <Box sx={{ 
+                  mt: 2.5, 
+                  bgcolor: '#F8FAFC', 
+                  border: '1px solid #E2E8F0', 
+                  borderRadius: '8px',
+                  fontFamily: "'Inter', sans-serif",
+                  overflow: 'hidden'
+                }}>
+                  <Box 
+                    onClick={() => setShowMetadataHelp(prev => !prev)}
+                    sx={{ 
+                      p: 2, 
+                      display: 'flex', 
+                      justifyContent: 'space-between', 
+                      alignItems: 'center', 
+                      cursor: 'pointer',
+                      userSelect: 'none',
+                      '&:hover': { bgcolor: '#F1F5F9' }
+                    }}
+                  >
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#1E2875', fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      Campos y Hojas Requeridas en el Excel:
+                    </Typography>
+                    <IconButton size="small" sx={{ color: '#1E2875', p: 0 }}>
+                      <ExpandMoreIcon sx={{ 
+                        transform: showMetadataHelp ? 'rotate(180deg)' : 'rotate(0deg)',
+                        transition: 'transform 0.2s'
+                      }} />
+                    </IconButton>
+                  </Box>
+                  
+                  <Collapse in={showMetadataHelp}>
+                    <Box sx={{ p: 2, pt: 0 }}>
+                      <Divider sx={{ mb: 2 }} />
+                      <Grid container spacing={1.5}>
+                        {selectedTemplateMetadata.hojas.map((hoja, hIdx) => (
+                          <Grid item xs={12} sm={6} key={hIdx}>
+                            <Box sx={{ bgcolor: '#ffffff', p: 1.5, borderRadius: '6px', border: '1px solid #E2E8F0', height: '100%' }}>
+                              <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#1DC2A0', mb: 0.5, display: 'flex', alignItems: 'center', gap: 0.5, fontSize: '12px' }}>
+                                📁 Hoja: {hoja.nombre}
+                              </Typography>
+                              <Typography variant="body2" sx={{ color: '#475569', fontSize: '11.5px', lineHeight: 1.45 }}>
+                                <strong>Columnas obligatorias:</strong> {hoja.columnas.join(', ')}
+                              </Typography>
+                            </Box>
+                          </Grid>
+                        ))}
+                      </Grid>
+                    </Box>
+                  </Collapse>
+                </Box>
+              )}
 
               {/* 2. Carga tu archivo */}
               <Box sx={{ 
@@ -683,32 +774,46 @@ export const CargaDatos = () => {
 
               {/* Alertas de error en caso de fallo estructural o celdas vacías */}
               {uploadError && (
-                <Alert 
-                  severity="error" 
-                  sx={{ 
-                    mt: 3, 
-                    fontFamily: "'Inter', sans-serif",
-                    borderRadius: '8px',
-                    border: '1px solid #FCA5A5',
-                    bgcolor: '#FEF2F2',
-                    '& .MuiAlert-message': { width: '100%' }
-                  }}
-                >
-                  <Typography sx={{ fontWeight: 600, fontSize: '15px', color: '#991B1B', mb: uploadErrorDetails.length > 0 ? 1 : 0 }}>
-                    {uploadError}
-                  </Typography>
-                  {uploadErrorDetails.length > 0 && (
-                    <Box component="ul" sx={{ pl: 2.5, m: 0, color: '#991B1B', fontSize: '13px' }}>
-                      {uploadErrorDetails.map((detail, idx) => (
-                        <li key={idx} style={{ marginBottom: '4px' }}>
-                          <strong>Hoja:</strong> {detail.sheet || 'General'} | 
-                          <strong> Celda:</strong> {detail.row ? `Fila ${detail.row}` : ''}{detail.column ? `, Columna ${detail.column}` : ''} | 
-                          <strong> Fallo:</strong> {detail.message}
-                        </li>
-                      ))}
-                    </Box>
-                  )}
-                </Alert>
+                <>
+                  <Alert 
+                    severity="error" 
+                    sx={{ 
+                      mt: 3, 
+                      fontFamily: "'Inter', sans-serif",
+                      borderRadius: '8px',
+                      border: '1px solid #FCA5A5',
+                      bgcolor: '#FEF2F2',
+                      '& .MuiAlert-message': { width: '100%' }
+                    }}
+                  >
+                    {uploadErrorDetails.length > 0 ? (
+                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+                        {uploadErrorDetails.map((detail, idx) => (
+                          <Typography 
+                            key={idx} 
+                            sx={{ 
+                              fontSize: '13px', 
+                              color: '#991B1B', 
+                              fontFamily: "'Inter', sans-serif",
+                              lineHeight: 1.4
+                            }}
+                          >
+                            <strong>Hoja:</strong> {detail.hoja}
+                            {detail.fila && <> | <strong>Fila:</strong> {detail.fila}</>}
+                            {detail.columna && <> | <strong>Columna:</strong> {detail.columna}</>}
+                            {detail.celda && <> | <strong>Celda:</strong> {detail.celda}</>}
+                            {' '}| <strong>Fallo:</strong> {detail.message}
+                          </Typography>
+                        ))}
+                      </Box>
+                    ) : (
+                      <Typography sx={{ fontWeight: 600, fontSize: '15px', color: '#991B1B' }}>
+                        {uploadError}
+                      </Typography>
+                    )}
+                  </Alert>
+                  {/* Botón corregir y reintentar removido por redundancia */}
+                </>
               )}
             </>
           )}

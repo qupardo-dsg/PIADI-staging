@@ -3,6 +3,123 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../auth';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const VCM_ROLE = 'Vinculación Con El Medio';
+const VCM_TEMPLATE_NAME = 'Vinculación Con El Medio';
+const INTERNAL_ERROR_MESSAGE = 'Error interno, contacte al administrador';
+
+const toPublicText = (value) => (
+  typeof value === 'string' || typeof value === 'number' ? String(value) : ''
+);
+
+export const normalizeUploadErrorDetail = (detail = {}) => ({
+  message: toPublicText(detail.message) || 'El registro contiene un dato inválido.',
+  hoja: toPublicText(detail.hoja ?? detail.sheet) || 'General',
+  fila: toPublicText(detail.fila ?? detail.row),
+  columna: toPublicText(detail.columna ?? detail.column),
+  celda: toPublicText(detail.celda ?? detail.cell)
+});
+
+const normalizeName = (value) => String(value || '').trim().toLocaleLowerCase('es');
+
+export const isVcmTemplate = (template) => (
+  normalizeName(template?.name) === normalizeName(VCM_TEMPLATE_NAME)
+);
+
+export const canViewTemplate = (template, userRole) => {
+  if (isVcmTemplate(template)) {
+    return [VCM_ROLE, 'Rector'].includes(userRole);
+  }
+
+  if (['Rector', 'Administrador', 'Director de Administración'].includes(userRole)) {
+    return true;
+  }
+
+  return template.role?.name === userRole;
+};
+
+export const TEMPLATE_METADATA = {
+  'matricula y estudiantes': {
+    hojas: [
+      {
+        nombre: 'Matrícula',
+        columnas: ['Año', 'Semestre', 'Rut Alumno', 'Nombre Completo', 'Sexo', 'Edad', 'Carrera', 'Jornada', 'Tipo Ingreso']
+      }
+    ]
+  },
+  'caracterizacion estudiante': {
+    hojas: [
+      {
+        nombre: 'Caracterización',
+        columnas: ['Rut Alumno', 'Nivel Socioeconómico', 'Comuna Residencia', 'Tipo Colegio Procedencia', 'Situación Familiar']
+      }
+    ]
+  },
+  'rendimiento academico': {
+    hojas: [
+      {
+        nombre: 'Rendimiento',
+        columnas: ['Año', 'Semestre', 'Código Asignatura', 'Sección', 'Rut Alumno', 'Nota Final', 'Asistencia', 'Aprobado']
+      }
+    ]
+  },
+  'educacion continua': {
+    hojas: [
+      {
+        nombre: 'Base Programas',
+        columnas: ['ID Programa', 'Año', 'Semestre', 'Área', 'Programa', 'Tipo', 'Modalidad', 'Horas', 'Cupos Programados']
+      },
+      {
+        nombre: 'Participantes Detalle',
+        columnas: ['ID Participante', 'RUT', 'Nombre', 'Apellido Paterno', 'ID Inscripción', 'ID Programa', 'Año', 'Semestre']
+      }
+    ]
+  },
+  'vinculacion con el medio': {
+    hojas: [
+      {
+        nombre: 'Convenios',
+        columnas: [
+          'ID Convenio', 'Contraparte', 'RUT Contraparte', 'Sector', 'Tipo convenio',
+          'Año firma', 'Fecha firma', 'Fecha término', 'Estado', 'Área vinculada',
+          'Contacto', 'Región', 'Comuna', 'Responsable ECAS', 'Objetivo / alcance', 'Evidencia'
+        ]
+      },
+      {
+        nombre: 'Actividades VcM',
+        columnas: [
+          'ID Actividad', 'Fecha', 'Año', 'Mes', 'Línea VcM', 'Tipo actividad',
+          'Nombre actividad', 'Institución / contraparte', 'Sector', 'Responsable',
+          'Región', 'Comuna', 'Modalidad', 'Público objetivo', 'Participantes externos',
+          'Participantes internos', 'Total participantes', 'Horas', 'Convenio asociado', 'Reporta a VcM'
+        ]
+      },
+      {
+        nombre: 'Participacion detalle',
+        columnas: [
+          'ID Participación', 'ID Actividad', 'Año', 'Fecha', 'Tipo actividad',
+          'Institución', 'Tipo participante', 'Interno / Externo', 'Mujeres', 'Hombres',
+          'Total personas', 'Comuna', 'Región'
+        ]
+      },
+      {
+        nombre: 'Articulaciones TP',
+        columnas: [
+          'ID Articulación', 'Año', 'Fecha', 'Colegio / Liceo TP', 'Comuna', 'Región',
+          'Especialidad TP', 'Plataforma / foco', 'Tipo articulación', 'Estudiantes TP',
+          'Docentes TP', 'Nivel', 'Responsable ECAS', 'Producto / evidencia', 'Estado'
+        ]
+      }
+    ]
+  },
+  'innovacion': {
+    hojas: [
+      {
+        nombre: 'Proyectos',
+        columnas: ['ID Proyecto', 'Año', 'Nombre Proyecto', 'Investigador Principal', 'Financiamiento Externo', 'Docentes Involucrados']
+      }
+    ]
+  }
+};
 
 export const getTemplateColor = (roleName) => {
   if (!roleName) return '#1E2875';
@@ -128,17 +245,7 @@ export const useCargaDatos = () => {
       .catch(() => {});
   }, [templates]);
 
-  // Filtrado de plantillas por rol (Rector y administradores ven todas)
-  const filteredTemplates = templates.filter((tmpl) => {
-    if (
-      user?.role === 'Rector' || 
-      user?.role === 'Administrador' || 
-      user?.role === 'Director de Administración'
-    ) {
-      return true;
-    }
-    return tmpl.role?.name === user?.role;
-  });
+  const filteredTemplates = templates.filter((template) => canViewTemplate(template, user?.role));
 
   // Datos de las Preguntas Frecuentes (FAQ) del Centro de Ayuda
   const faqData = [
@@ -275,7 +382,12 @@ export const useCargaDatos = () => {
           body: formData
         });
 
-        const data = await response.json();
+        let data = {};
+        try {
+          data = await response.json();
+        } catch {
+          data = {};
+        }
 
         if (response.ok) {
           const templateObj = templates.find(t => t.id === selectedTemplate);
@@ -291,10 +403,23 @@ export const useCargaDatos = () => {
           setSuccessSummary(data.resumen || null);
           setUploadSuccess(true);
         } else {
-          // Si el servidor retorna errores de validación estructurados
-          setUploadError(data.message || data.error || 'Error en la estructura del archivo.');
-          if (data.errores) {
-            setUploadErrorDetails(data.errores);
+          if (response.status === 403) {
+            setUploadError('No tienes permiso para cargar datos en este departamento');
+            return;
+          }
+
+          if (response.status >= 500) {
+            setUploadError(INTERNAL_ERROR_MESSAGE);
+            return;
+          }
+
+          setUploadError(
+            typeof data.error === 'string'
+              ? data.error
+              : 'Error en la estructura del archivo.'
+          );
+          if (Array.isArray(data.errores)) {
+            setUploadErrorDetails(data.errores.map(normalizeUploadErrorDetail));
           }
         }
       } catch (err) {
@@ -304,6 +429,24 @@ export const useCargaDatos = () => {
         setUploading(false);
       }
     }
+  };
+
+  const handleRetryUpload = () => {
+    setSelectedFile(null);
+    setUploadError('');
+    setUploadErrorDetails([]);
+    setUploading(false);
+  };
+
+  const getSelectedTemplateMetadata = () => {
+    if (!selectedTemplate) return null;
+    const tmpl = templates.find(t => t.id === selectedTemplate);
+    if (!tmpl) return null;
+    const nameKey = tmpl.name.toLowerCase()
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .replace(/con el/g, 'con el')
+      .trim();
+    return TEMPLATE_METADATA[nameKey] || null;
   };
 
   return {
@@ -340,5 +483,7 @@ export const useCargaDatos = () => {
     handleDrop,
     handleCloseDialog,
     handleUploadSubmit,
+    handleRetryUpload,
+    selectedTemplateMetadata: getSelectedTemplateMetadata(),
   };
 };

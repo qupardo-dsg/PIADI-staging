@@ -1,13 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../auth';
-import { getDashboardSummary } from '../../../services/piadiApi';
-
-const LANDING_YEAR = 2026;
+import { getDashboardSummary, getDepartmentFilters, getMetas } from '../../../services/piadiApi';
 
 // Mapeo de colores específicos por departamento.
 export const DEPARTMENT_COLORS = {
-  0: '#46D19F', // Educación Continua (Turquesa claro)
+  educacion_continua: '#46D19F',
+  vinculacion_medio: '#E27800',
 };
 
 export const useLandingPage = () => {
@@ -19,22 +18,99 @@ export const useLandingPage = () => {
   // Estado para controlar la apertura del menú lateral en móviles
   const [mobileOpen, setMobileOpen] = useState(false);
   const [openHelpDialog, setOpenHelpDialog] = useState(false); // Estado para abrir el Centro de Ayuda
-  const [ecApiData, setEcApiData] = useState(null);
+  const [departments, setDepartments] = useState([]);
+  const [prevYearDepartments, setPrevYearDepartments] = useState([]);
+  const [activeYear, setActiveYear] = useState(new Date().getFullYear());
+  const [deptYearsMap, setDeptYearsMap] = useState({
+    educacion_continua: [],
+    vinculacion_medio: []
+  });
+  const [allMetas, setAllMetas] = useState([]);
 
+  // 1. Initial fetch: Load departments, filters and metas on mount
   useEffect(() => {
-    getDashboardSummary({ department: 'educacion_continua', year: LANDING_YEAR })
+    getDashboardSummary()
       .then(res => {
-        if (!res?.success || !res.data) return;
-        // Formato real: data.departments[0].cards[{ indicatorKey, value, hasData }]
-        const deptData = res.data?.departments?.find(d => d.departmentId === 'educacion_continua');
-        const cards = deptData?.cards ?? [];
-        if (!cards.some(c => c.hasData)) return;
-        const map = {};
-        cards.forEach(c => { map[c.indicatorKey] = c; });
-        setEcApiData(map);
+        if (res?.success && res.data) {
+          const filtered = (res.data.departments ?? []).filter(d => d.departmentId !== 'institucional' && d.key !== 'institucional' && d.id !== 'institucional');
+          setDepartments(filtered);
+        }
+      })
+      .catch(() => {});
+
+    Promise.all([
+      getDepartmentFilters('educacion_continua').catch(() => null),
+      getDepartmentFilters('vinculacion_medio').catch(() => null)
+    ])
+      .then(([resEc, resVcm]) => {
+        const ecYears = resEc?.success ? (resEc.data?.filters?.years ?? []) : [];
+        const vcmYears = resVcm?.success ? (resVcm.data?.filters?.years ?? []) : [];
+        setDeptYearsMap({
+          educacion_continua: ecYears.map(Number),
+          vinculacion_medio: vcmYears.map(Number)
+        });
+      })
+      .catch(() => {});
+
+    getMetas()
+      .then(res => {
+        if (res?.success && Array.isArray(res.data)) {
+          const mapped = res.data.map(m => {
+            let estado = 'progreso';
+            if (m.status === 'cumplida') estado = 'completada';
+            else if (m.status === 'en_riesgo' || m.status === 'no_cumplida') estado = 'atencion';
+
+            const actual = m.metrics?.[0]?.currentValue !== undefined ? Number(m.metrics[0].currentValue) : 0;
+            const objetivo = Number(m.valorMeta || m.metrics?.[0]?.targetValue || 0);
+
+            return {
+              id: m.id,
+              name: m.nombre || 'Meta',
+              estado: estado,
+              pct: Number(m.totalProgress || 0),
+              prioridad: m.prioridad || 'media',
+              actual: actual,
+              objetivo: objetivo,
+              inicio: m.fechaInicio || m.inicio || '',
+              limite: m.fechaLimite || m.limite || '',
+              departmentId: m.departmentId
+            };
+          });
+          setAllMetas(mapped);
+        }
       })
       .catch(() => {});
   }, []);
+
+  const currentDeptId = departments[activeTab]?.departmentId;
+
+  // 2. Compute activeYear based on current department's available years
+  useEffect(() => {
+    if (!currentDeptId) return;
+    const availableYears = deptYearsMap[currentDeptId] || [];
+    const latestYear = availableYears.length > 0 ? Math.max(...availableYears) : new Date().getFullYear();
+    setActiveYear(latestYear);
+  }, [currentDeptId, deptYearsMap]);
+
+  // 3. Fetch summaries whenever activeYear changes
+  useEffect(() => {
+    if (!activeYear) return;
+    Promise.all([
+      getDashboardSummary({ year: activeYear }).catch(() => null),
+      getDashboardSummary({ year: activeYear - 1 }).catch(() => null)
+    ])
+      .then(([resActive, resPrev]) => {
+        if (resActive?.success && resActive.data) {
+          const filteredActive = (resActive.data.departments ?? []).filter(d => d.departmentId !== 'institucional' && d.key !== 'institucional' && d.id !== 'institucional');
+          setDepartments(filteredActive);
+        }
+        if (resPrev?.success && resPrev.data) {
+          const filteredPrev = (resPrev.data.departments ?? []).filter(d => d.departmentId !== 'institucional' && d.key !== 'institucional' && d.id !== 'institucional');
+          setPrevYearDepartments(filteredPrev);
+        }
+      })
+      .catch(() => {});
+  }, [activeYear]);
 
   const handleTabChange = (event, newValue) => {
     setActiveTab(newValue);
@@ -44,31 +120,81 @@ export const useLandingPage = () => {
     setMobileOpen(!mobileOpen);
   };
 
-  // Solo Educación Continua — Resumen eliminado (sin endpoint real disponible)
-  const currentData = (() => {
-    const get = (key) => ecApiData?.[key]?.value;
-    const oferta = get('oferta_programada');
-    const dictados = get('cursos_dictados');
-    const ejecucion = get('tasa_ejecucion');
-    const matricula = get('matricula_por_programa');
-    const aprobacion = get('tasa_aprobacion');
-    const ingresos = get('ingresos_generados');
-    return {
-      year: LANDING_YEAR,
-      kpis: [
-        { title: 'Oferta programada', value: oferta != null ? String(oferta) : 'Sin datos', trend: '↑', trendDesc: `programas ${LANDING_YEAR}`, isBlue: true, targetHash: 'oferta-programada' },
-        { title: 'Cursos dictados', value: dictados != null ? String(dictados) : 'Sin datos', trend: '↑', trendDesc: `ejecutados ${LANDING_YEAR}`, isBlue: false, targetHash: 'cursos-dictados' },
-        { title: 'Tasa de ejecución', value: ejecucion != null ? `${ejecucion}%` : 'Sin datos', trend: '↑', trendDesc: 'cursos ejecutados', isBlue: false, targetHash: 'tasa-ejecucion' },
-        { title: 'Matrícula total', value: matricula != null ? Number(matricula).toLocaleString('es-CL') : 'Sin datos', trend: '↑', trendDesc: `participantes ${LANDING_YEAR}`, isBlue: true, targetHash: 'matricula-por-programa' },
-        { title: 'Tasa de aprobación', value: aprobacion != null ? `${aprobacion}%` : 'Sin datos', trend: '↑', trendDesc: 'aprobados del total', isBlue: false, targetHash: 'tasa-aprobacion' },
-        { title: 'Ingresos netos', value: ingresos != null ? `$${Number(ingresos).toLocaleString('es-CL')}` : 'Sin datos', trend: '↑', trendDesc: 'CLP facturados', isBlue: false, targetHash: 'ingresos-generados' },
+  const currentDepartment = departments[activeTab];
+
+  const currentData = useMemo(() => {
+    const prevDepartment = prevYearDepartments.find(d => d.departmentId === currentDepartment?.departmentId);
+
+    const kpiFilterConfig = {
+      educacion_continua: [
+        { key: 'oferta_programada', label: 'Oferta programada', targetHash: 'oferta-programada' },
+        { key: 'cursos_dictados', label: 'Cursos dictados', targetHash: 'cursos-dictados' },
+        { key: 'matricula_por_programa', label: 'Matrícula total', targetHash: 'matricula-por-programa' },
+        { key: 'ingresos_generados', label: 'Ingresos netos', targetHash: 'ingresos-generados' }
       ],
-      goals: []
+      vinculacion_medio: [
+        { key: 'convenios_activos', label: 'Total de convenios vigentes', targetHash: 'convenios_vigentes' },
+        { key: 'total_convenios', label: 'Nuevos convenios firmados', targetHash: 'nuevos_convenios' },
+        { key: 'participaciones', label: 'Total de participantes VcM', targetHash: 'total_participantes' }
+      ]
     };
-  })();
+
+    const currentDeptKpis = kpiFilterConfig[currentDepartment?.departmentId] || [];
+
+    const mappedKpis = currentDeptKpis.map((kpiConfig, index) => {
+      const cardActiveYear = (currentDepartment?.cards ?? []).find(c => c.indicatorKey === kpiConfig.key);
+      const cardPrevYear = (prevDepartment?.cards ?? []).find(c => c.indicatorKey === kpiConfig.key);
+
+      const valActiveYear = cardActiveYear?.value;
+      const valPrevYear = cardPrevYear?.value;
+
+      let trend = '';
+      let trendDesc = '';
+
+      if (cardActiveYear?.hasData) {
+        if (cardPrevYear?.hasData && valPrevYear && valPrevYear !== 0) {
+          const diff = ((valActiveYear - valPrevYear) / valPrevYear) * 100;
+          trend = `${diff >= 0 ? '+' : ''}${Math.round(diff)}%`;
+          const prevValFmt = cardPrevYear.formattedValue ?? cardPrevYear.value;
+          const prevYearLabel = activeYear - 1;
+          trendDesc = `vs año anterior (${prevYearLabel}): ${prevValFmt}`;
+        } else {
+          trendDesc = 'Sin datos del año anterior';
+        }
+      } else {
+        if (cardPrevYear?.hasData) {
+          trendDesc = `Año anterior: ${cardPrevYear.formattedValue ?? cardPrevYear.value}`;
+        } else {
+          trendDesc = cardActiveYear?.unit || '';
+        }
+      }
+
+      return {
+        title: kpiConfig.label,
+        value: cardActiveYear?.hasData
+          ? (cardActiveYear.formattedValue ?? cardActiveYear.value)
+          : 'No hay datos cargados',
+        trend: trend,
+        trendDesc: trendDesc,
+        isBlue: index % 3 === 0,
+        targetHash: kpiConfig.targetHash,
+      };
+    });
+
+    const filteredMetas = allMetas.filter(m => m.departmentId === currentDepartment?.departmentId && m.prioridad === 'alta');
+
+    return {
+      year: activeYear,
+      departmentId: currentDepartment?.departmentId,
+      departmentName: currentDepartment?.name || 'departamento seleccionado',
+      kpis: mappedKpis,
+      metas: filteredMetas,
+      hasData: (currentDepartment?.cards ?? []).some(c => c.hasData),
+    };
+  }, [currentDepartment, prevYearDepartments, activeYear, allMetas]);
   
   // Obtiene el color de fondo personalizado para este departamento
-  const deptColor = DEPARTMENT_COLORS[activeTab] || '#1E2875';
+  const deptColor = DEPARTMENT_COLORS[currentData.departmentId] || '#1E2875';
 
   // Forzamos el color del texto a blanco para todas las tarjetas de color
   const isLight = false;
@@ -114,6 +240,7 @@ export const useLandingPage = () => {
     setMobileOpen,
     openHelpDialog,
     setOpenHelpDialog,
+    departments,
     currentData,
     deptColor,
     isLight,
