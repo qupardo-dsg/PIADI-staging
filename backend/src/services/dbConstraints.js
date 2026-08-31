@@ -118,7 +118,14 @@ async function initDbConstraints() {
       CREATE INDEX IF NOT EXISTS idx_metas_dept_ind_key ON metas ("departmentId", "indicatorKey");
     `);
 
-    console.log('Creating materialized view v_meta_indicator_values...');
+    // Skip heavy view creation if views already exist (subsequent boots)
+    const [viewCheck] = await sequelize.query(`
+      SELECT 1 FROM information_schema.views WHERE table_name = 'v_landing_metas' LIMIT 1
+    `);
+    if (viewCheck.length > 0) {
+      console.log('Views already exist, skipping creation (fast boot).');
+    } else {
+      console.log('Creating materialized view v_meta_indicator_values...');
     await sequelize.query(`
       DROP MATERIALIZED VIEW IF EXISTS v_meta_indicator_values CASCADE;
     `);
@@ -599,6 +606,7 @@ async function initDbConstraints() {
     await sequelize.query(`
       COMMENT ON VIEW v_landing_metas IS 'Vista consolidada optimizada para la Landing Page, limitada a las 10 metas más recientes por departamento.';
     `);
+    }
 
     console.log('Database-level constraints, triggers, and SQL documentation applied successfully.');
   } catch (error) {
