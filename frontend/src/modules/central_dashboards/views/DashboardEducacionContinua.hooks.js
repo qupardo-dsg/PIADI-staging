@@ -1,7 +1,13 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../auth';
-import { getDashboardSummary, getIndicatorSeries, getIndicatorBreakdown, getDepartmentFilters } from '../../../services/piadiApi';
+import { 
+  getDashboardSummary, 
+  getIndicatorSeries, 
+  getIndicatorBreakdown, 
+  getDepartmentFilters,
+  getIndicatorDetail 
+} from '../../../services/piadiApi';
 import { BookOpen, CheckCircle, Users, DollarSign } from 'lucide-react';
 
 export const SEMESTRES_LIST = ['Primer semestre', 'Segundo semestre'];
@@ -11,14 +17,163 @@ export const TIPOS_LIST = ['Curso', 'Diplomado', 'Seminario', 'Postítulo'];
 export const MODALIDADES_LIST = ['Presencial', 'Online', 'Semipresencial', 'Híbrida'];
 export const AREAS_LIST = ['Auditoría', 'Contabilidad', 'Finanzas', 'Tributación', 'Gestión', 'Tecnología'];
 
+export const OFERTA_GROUP_BY_MAP = {
+  total: null,
+  area: 'area',
+  tipo: 'tipo',
+  modalidad: 'modalidad'
+};
+
+export const INGRESOS_GROUP_BY_MAP = {
+  area: 'area',
+  tipo: 'tipo',
+  modalidad: 'modalidad'
+};
+
+export const MATRICULA_GROUP_BY_MAP = {
+  total: null,
+  area: 'area',
+  modalidad: 'modalidad',
+  tipo: 'tipo'
+};
+
+export const PERFIL_GROUP_BY_MAP = {
+  region: 'region',
+  sector: 'sectorEconomico',
+  escolaridad: 'nivelDeEstudio',
+  edad: 'rangoEdad',
+  genero: 'sexo',
+  tipo: 'tipoParticipante'
+};
+
+export const INDICATOR_SPECIFIC_DIMENSION = {
+  'oferta-programada': 'area',
+  'ingresos-generados': 'area',
+  'matricula-por-programa': 'area',
+  'tasa-aprobacion': 'area',
+  'perfil-participante': 'region',
+  'participantes-unicos': null,
+  'recurrencia-formativa': null,
+  'cursos-dictados': null,
+  'tasa-ejecucion': null,
+  'cursos-ofertados': 'area',
+  'participantes-matriculados': 'area',
+  'ingresos-totales': 'area'
+};
+
+export const UI_TO_BACKEND_KEY = {
+  'oferta-programada': 'oferta_programada',
+  'cursos-dictados': 'cursos_dictados',
+  'tasa-ejecucion': 'tasa_ejecucion',
+  'ingresos-generados': 'ingresos_generados',
+  'matricula-por-programa': 'matricula_por_programa',
+  'tasa-aprobacion': 'tasa_aprobacion',
+  'perfil-participante': 'perfil_participante',
+  'participantes-unicos': 'participantes_unicos',
+  'recurrencia-formativa': 'recurrencia_formativa',
+  'cursos-ofertados': 'oferta_programada',
+  'participantes-matriculados': 'matricula_por_programa',
+  'ingresos-totales': 'ingresos_generados'
+};
+
+export const INDICATORS = {
+  'oferta-programada': {
+    title: 'Oferta de cursos programada',
+    desc: 'Cantidad total de cursos y programas planificados por el departamento para el período.',
+    metric: { label: 'Oferta total programada', value: null },
+    colLabels: ['Año', 'Programas ofertados'],
+    state: 'data'
+  },
+  'cursos-dictados': {
+    title: 'Cursos efectivamente dictados',
+    desc: 'Cantidad de cursos y programas impartidos en comparación a los inicialmente planificados.',
+    metric: { label: 'Cursos dictados', value: null },
+    colLabels: ['Año', 'Cursos'],
+    state: 'data'
+  },
+  'tasa-ejecucion': {
+    title: 'Tasa de ejecución (%)',
+    desc: 'Porcentaje de programas dictados respecto al total de programas programados en el período.',
+    metric: { label: 'Tasa de ejecución promedio', value: null },
+    colLabels: ['Año', 'Tasa (%)'],
+    state: 'data'
+  },
+  'ingresos-generados': {
+    title: 'Ingresos generados',
+    desc: 'Monto total de ingresos brutos percibidos por concepto de matrícula en Educación Continua.',
+    metric: { label: 'Total ingresos generados', value: null },
+    colLabels: ['Área', 'Ingresos (CLP)'],
+    state: 'data'
+  },
+  'matricula-por-programa': {
+    title: 'Matrícula por programa',
+    desc: 'Distribución de alumnos y participantes inscritos en los distintos programas y cursos.',
+    metric: { label: 'Total matrículas', value: null },
+    colLabels: ['Área', 'Matrículas'],
+    state: 'data'
+  },
+  'tasa-aprobacion': {
+    title: 'Tasa de aprobación',
+    desc: 'Porcentaje de estudiantes que finalizaron y aprobaron satisfactoriamente las exigencias del programa.',
+    metric: { label: 'Área con más tasa de aprobación', value: null },
+    colLabels: ['Área / Programa', 'Aprobación (%)'],
+    state: 'data'
+  },
+  'perfil-participante': {
+    title: 'Perfil del participante',
+    desc: 'Caracterización demográfica y procedencia de los alumnos inscritos (región, sector, escolaridad, edad, etc.).',
+    metric: { label: 'Participantes caracterizados', value: null },
+    colLabels: ['Categoría', 'Participantes'],
+    state: 'data'
+  },
+  'participantes-unicos': {
+    title: 'Pictograma: Participantes Únicos',
+    desc: 'Número de personas individuales registradas en actividades formativas durante el año analizado.',
+    metric: { label: 'Participantes únicos', value: null },
+    colLabels: ['Rango de edad', 'Personas'],
+    state: 'data'
+  },
+  'recurrencia-formativa': {
+    title: 'Pictograma: Frecuencia de Matrículas',
+    desc: 'Proporción de estudiantes que se han matriculado en más de un programa a lo largo de los años.',
+    metric: { label: 'Estudiantes recurrentes', value: null },
+    colLabels: ['Frecuencia', 'Personas'],
+    state: 'data'
+  },
+  'cursos-ofertados': {
+    title: 'Cursos ofertados',
+    desc: 'Total de programas formativos ofrecidos durante el ciclo anual.',
+    metric: { label: 'Cursos ofertados', value: null },
+    colLabels: ['Año', 'Cursos'],
+    state: 'data'
+  },
+  'participantes-matriculados': {
+    title: 'Participantes matriculados',
+    desc: 'Total acumulado de participantes matriculados en programas de Educación Continua.',
+    metric: { label: 'Participantes matriculados', value: null },
+    colLabels: ['Año', 'Participantes'],
+    state: 'data'
+  },
+  'ingresos-totales': {
+    title: 'Ingresos totales',
+    desc: 'Monto total percibido por programas de formación continua en el período.',
+    metric: { label: 'Ingresos totales', value: null },
+    colLabels: ['Año', 'Monto ($M CLP)'],
+    state: 'data'
+  }
+};
+
 export const useDashboardEducacionContinua = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  // ESTADOS DE FILTROS PERSISTENTES (SIDEBAR DERECHO)
+  // ESTADOS DE FILTROS PERSISTENTES (SIDEBAR MODULAR)
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const [filtersCollapsed, setFiltersCollapsed] = useState(false);
   const [cohorteDesde, setCohorteDesde] = useState('2023');
   const [cohorteHasta, setCohorteHasta] = useState('2026');
+  const [periodoAcumulado, setPeriodoAcumulado] = useState(false);
   const [semestresSeleccionados, setSemestresSeleccionados] = useState([]);
   const [mesDesde, setMesDesde] = useState('Enero');
   const [mesHasta, setMesHasta] = useState('Diciembre');
@@ -31,6 +186,23 @@ export const useDashboardEducacionContinua = () => {
   const [ingresosViewMode, setIngresosViewMode] = useState('area'); // 'area', 'tipo', 'modalidad'
   const [matriculaViewMode, setMatriculaViewMode] = useState('total'); // 'total', 'area', 'modalidad', 'tipo'
   const [perfilViewMode, setPerfilViewMode] = useState('region'); // 'region', 'sector', 'escolaridad', 'edad', 'genero', 'tipo'
+
+  // ESTADOS DE SECCIONES COLAPSABLES
+  const [sectionsOpen, setSectionsOpen] = useState({
+    oferta: true,
+    dictados: true,
+    ejecucion: true,
+    ingresos: true,
+    matricula: true,
+    aprobacion: true,
+    perfil: true,
+    participantesUnicos: true,
+    recurrencia: true,
+  });
+
+  const toggleSection = (sectionKey) => {
+    setSectionsOpen(prev => ({ ...prev, [sectionKey]: !prev[sectionKey] }));
+  };
 
   // Local states for Unique Participants
   const [localSexoFilter, setLocalSexoFilter] = useState('Todos');
@@ -264,6 +436,7 @@ export const useDashboardEducacionContinua = () => {
   const handleResetFilters = () => {
     setCohorteDesde('2023');
     setCohorteHasta('2026');
+    setPeriodoAcumulado(false);
     setSemestresSeleccionados([]);
     setMesDesde('Enero');
     setMesHasta('Diciembre');
@@ -352,50 +525,99 @@ export const useDashboardEducacionContinua = () => {
   }), [apiSummary]);
 
   const kpiCardsData = useMemo(() => {
-    const yHasta = Number(cohorteHasta);
-    const yDesde = Number(cohorteDesde);
-    
-    // Función para obtener la suma de los valores de la serie en el rango seleccionado
+    const yHasta = Number(cohorteHasta) || 2026;
+    const yDesde = Number(cohorteDesde) || 2023;
+    const isSingleYear = yDesde === yHasta;
+    const minAvailableYear = 2023;
+
+    const getValForYear = (series, year) => {
+      if (!series) return null;
+      const match = series.find(p => Number(p.year ?? p.period ?? p.label ?? p.cohorte) === Number(year));
+      return match ? (match.value ?? match.val ?? match.count ?? 0) : null;
+    };
+
     const getRangeSum = (series) => {
       if (!series) return null;
       const filtered = series.filter(p => {
-        const yr = Number(p.year);
+        const yr = Number(p.year ?? p.period ?? p.label ?? p.cohorte);
         return yr >= yDesde && yr <= yHasta;
       });
       if (!filtered.length) return null;
-      return filtered.reduce((acc, curr) => acc + (curr.value ?? 0), 0);
+      return filtered.reduce((acc, curr) => acc + Number(curr.value ?? curr.val ?? curr.count ?? 0), 0);
     };
 
-    const getValForYear = (series, year) => series?.find(p => Number(p.year) === year)?.value ?? null;
-
-    // Los valores principales de las tarjetas serán el total acumulado en el rango seleccionado
-    const oVal = apiSummary?.oferta_programada?.value ?? getRangeSum(apiOfertaSeries);
-    const dVal = apiSummary?.cursos_dictados?.value ?? getRangeSum(apiDictadosSeries);
-    const mVal = apiSummary?.matricula_por_programa?.value ?? getRangeSum(apiMatriculaSeries);
-    const iVal = apiSummary?.ingresos_generados?.value ?? getRangeSum(apiIngresosSeries);
-
-    // Para la evolución, comparamos el último año con el primero en el rango
-    const evo = (key, series) => {
-      if (apiSummary?.[key]?.evolution != null) {
-        return apiSummary[key].evolution;
+    const computeKpi = (key, title, Icon, color, series, backendSummaryKey, fmt) => {
+      const summaryCard = apiSummary?.[backendSummaryKey];
+      
+      let val;
+      if (periodoAcumulado && !isSingleYear) {
+        val = getRangeSum(series) ?? summaryCard?.value ?? null;
+      } else {
+        val = getValForYear(series, yHasta) ?? summaryCard?.value ?? null;
       }
-      const vHasta = getValForYear(series, yHasta);
-      const vDesde = getValForYear(series, yDesde);
-      return (vDesde != null && vHasta != null && vDesde !== 0) ? parseFloat(((vHasta - vDesde) / vDesde * 100).toFixed(1)) : null;
-    };
 
-    const oDesde = getValForYear(apiOfertaSeries, yDesde);
-    const dDesde = getValForYear(apiDictadosSeries, yDesde);
-    const mDesde = getValForYear(apiMatriculaSeries, yDesde);
-    const iDesde = getValForYear(apiIngresosSeries, yDesde);
+      let compareYear = yDesde;
+      let isBaseline = false;
+      if (isSingleYear) {
+        if (yDesde === minAvailableYear) {
+          isBaseline = true;
+        } else {
+          compareYear = yDesde - 1;
+        }
+      }
+
+      let baseVal = getValForYear(series, compareYear);
+      let evo = null;
+      let hasEvo = false;
+      let isPositive = true;
+      let isNeutral = false;
+
+      if (!isBaseline && baseVal !== null && val !== null && baseVal > 0) {
+        const diff = val - baseVal;
+        evo = parseFloat(((diff / baseVal) * 100).toFixed(1));
+        hasEvo = true;
+        isPositive = evo >= 0;
+        if (evo === 0) isNeutral = true;
+      } else if (!isBaseline && summaryCard?.evolution != null) {
+        evo = summaryCard.evolution;
+        hasEvo = true;
+        isPositive = evo >= 0;
+        if (evo === 0) isNeutral = true;
+      }
+
+      let compareText = null;
+      if (isBaseline) {
+        compareText = `Año ${yDesde} es la línea base`;
+      } else if (hasEvo) {
+        if (isNeutral) {
+          compareText = `Igual al año anterior (${compareYear})`;
+        } else {
+          const compLabel = (periodoAcumulado || !isSingleYear) ? 'vs Año base' : 'vs Año anterior';
+          compareText = `${compLabel} (${compareYear}): ${fmt(baseVal ?? 0)}`;
+        }
+      }
+
+      return {
+        key,
+        title,
+        value: val !== null ? fmt(val) : '-',
+        rawVal: val,
+        icon: Icon,
+        color,
+        hasData: val !== null,
+        compareText,
+        evolution: hasEvo && !isNeutral ? `${Math.abs(evo)}%` : null,
+        isPositive,
+      };
+    };
 
     return [
-      { key: 'oferta', label: 'Oferta programada', Icon: BookOpen, color: '#1E2875', borderColor: '#1E2875', valHasta: oVal, valDesde: oDesde, yHasta, yDesde, evo: evo('oferta_programada', apiOfertaSeries), fmt: v => v != null ? String(v) : null },
-      { key: 'dictados', label: 'Cursos dictados', Icon: CheckCircle, color: '#047857', borderColor: '#10B981', valHasta: dVal, valDesde: dDesde, yHasta, yDesde, evo: evo('cursos_dictados', apiDictadosSeries), fmt: v => v != null ? String(v) : null },
-      { key: 'matricula', label: 'Matrícula total', Icon: Users, color: '#6d28d9', borderColor: '#8b5cf6', valHasta: mVal, valDesde: mDesde, yHasta, yDesde, evo: evo('matricula_por_programa', apiMatriculaSeries), fmt: v => v != null ? Number(v).toLocaleString('es-CL') : null },
-      { key: 'ingresos', label: 'Ingresos netos', Icon: DollarSign, color: '#b45309', borderColor: '#F59E0B', valHasta: iVal, valDesde: iDesde, yHasta, yDesde, evo: evo('ingresos_generados', apiIngresosSeries), fmt: v => v != null ? `$${Number(v).toLocaleString('es-CL')}` : null },
+      computeKpi('oferta-programada', 'Oferta programada', BookOpen, '#1E2875', apiOfertaSeries, 'oferta_programada', v => String(v)),
+      computeKpi('cursos-dictados', 'Cursos dictados', CheckCircle, '#10B981', apiDictadosSeries, 'cursos_dictados', v => String(v)),
+      computeKpi('matricula-por-programa', 'Matrícula total', Users, '#8B5CF6', apiMatriculaSeries, 'matricula_por_programa', v => Number(v).toLocaleString('es-CL')),
+      computeKpi('ingresos-generados', 'Ingresos netos', DollarSign, '#F59E0B', apiIngresosSeries, 'ingresos_generados', v => `$${Number(v).toLocaleString('es-CL')}`),
     ];
-  }, [apiOfertaSeries, apiDictadosSeries, apiMatriculaSeries, apiIngresosSeries, apiSummary, cohorteDesde, cohorteHasta]);
+  }, [apiOfertaSeries, apiDictadosSeries, apiMatriculaSeries, apiIngresosSeries, apiSummary, cohorteDesde, cohorteHasta, periodoAcumulado]);
 
   const uniqueParticipantsData = useMemo(() => {
     const map = new Map();
@@ -578,15 +800,334 @@ export const useDashboardEducacionContinua = () => {
     return text;
   }, [cohorteDesde, cohorteHasta, semestresSeleccionados, mesDesde, mesHasta, areaSeleccionada, modalidadSeleccionada, tipoSeleccionado]);
 
+  // -------------------------------------------------------------
+  // DRAWER LATERAL DE DETALLE DE INDICADOR
+  // -------------------------------------------------------------
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [currentIndicatorKey, setCurrentIndicatorKey] = useState('oferta-programada');
+  const [drawerPeriod, setDrawerPeriod] = useState('2026');
+  const [drawerGroupBy, setDrawerGroupBy] = useState(null);
+  const [drawerLoading, setDrawerLoading] = useState(false);
+  const [drawerError, setDrawerError] = useState(null);
+  const [apiIndicatorDetail, setApiIndicatorDetail] = useState(null);
+  const [openHelpDialog, setOpenHelpDialog] = useState(false);
+
+  // Drawer handlers
+  const handleOpenIndicator = useCallback((key, overrideGroupBy = undefined) => {
+    setCurrentIndicatorKey(key);
+    const mostRecentYear = cohorteHasta ? parseInt(cohorteHasta) : 2026;
+    setDrawerPeriod(String(mostRecentYear));
+    const defaultDim = overrideGroupBy !== undefined
+      ? overrideGroupBy
+      : (INDICATOR_SPECIFIC_DIMENSION[key] || null);
+    setDrawerGroupBy(defaultDim);
+    setDrawerOpen(true);
+  }, [cohorteHasta]);
+
+  const handleCloseDrawer = useCallback(() => {
+    setDrawerOpen(false);
+  }, []);
+
+  const handleDrawerPeriodChange = useCallback((val) => {
+    setDrawerPeriod(val);
+  }, []);
+
+  // Petición al endpoint GET /api/indicators/:key/detail
+  useEffect(() => {
+    if (!drawerOpen || !currentIndicatorKey) return;
+
+    setDrawerLoading(true);
+    setDrawerError(null);
+    const backendKey = UI_TO_BACKEND_KEY[currentIndicatorKey] || currentIndicatorKey.replace(/-/g, '_');
+    const params = { department: 'educacion_continua' };
+
+    if (drawerPeriod) {
+      params.year = String(drawerPeriod);
+    }
+    if (drawerGroupBy) {
+      params.groupBy = drawerGroupBy;
+    }
+
+    if (areaSeleccionada.length > 0) params.area = areaSeleccionada.join(',');
+    if (tipoSeleccionado.length > 0) params.tipo = tipoSeleccionado.join(',');
+    if (modalidadSeleccionada.length > 0) params.modalidad = modalidadSeleccionada.join(',');
+    if (semestresSeleccionados.length > 0) params.semester = semestresSeleccionados.join(',');
+
+    getIndicatorDetail(backendKey, params)
+      .then((res) => {
+        const detail = (res && res.data && typeof res.data === 'object' && !Array.isArray(res.data) && (res.data.title || res.data.indicatorKey))
+          ? res.data 
+          : res;
+
+        setApiIndicatorDetail(detail || null);
+        setDrawerError(null);
+      })
+      .catch((err) => {
+        console.error('Error al obtener detalle del indicador:', err);
+        setApiIndicatorDetail(null);
+        setDrawerError(err?.message || 'Error al obtener la información del indicador desde el servidor');
+      })
+      .finally(() => {
+        setDrawerLoading(false);
+      });
+  }, [drawerOpen, currentIndicatorKey, drawerPeriod, drawerGroupBy, areaSeleccionada, tipoSeleccionado, modalidadSeleccionada, semestresSeleccionados]);
+
+  // Años disponibles para el selector del Drawer
+  const drawerYears = useMemo(() => {
+    const yearsSet = new Set();
+    const d = parseInt(cohorteDesde) || 2023;
+    const h = parseInt(cohorteHasta) || 2026;
+    for (let y = Math.min(d, 2023); y <= Math.max(h, 2026); y++) {
+      yearsSet.add(y);
+    }
+    if (apiIndicatorDetail?.period?.from && apiIndicatorDetail?.period?.to) {
+      const { from, to } = apiIndicatorDetail.period;
+      for (let y = from; y <= to; y++) {
+        yearsSet.add(y);
+      }
+    }
+    const yrs = Array.from(yearsSet).filter(Number.isFinite).sort((a, b) => a - b);
+    return yrs.length > 0 ? yrs : [2023, 2024, 2025, 2026];
+  }, [apiIndicatorDetail, cohorteDesde, cohorteHasta]);
+
+  // Formateo del indicador actual para el Drawer
+  const currentIndicator = useMemo(() => {
+    const baseDef = INDICATORS[currentIndicatorKey] || INDICATORS['oferta-programada'];
+
+    if (apiIndicatorDetail) {
+      const {
+        title,
+        description,
+        total,
+        formattedTotal,
+        hasData: detailHasData,
+        disaggregated,
+        groupBy,
+        allowedGroupBy,
+        dimensionLabels,
+        comparison,
+        table,
+        unit
+      } = apiIndicatorDetail;
+
+      const specificDim = INDICATOR_SPECIFIC_DIMENSION[currentIndicatorKey];
+      const matchingDims = (allowedGroupBy || [])
+        .filter(dim => dim !== 'year' && dim !== 'periodo' && dim !== 'period')
+        .filter(dim => {
+          if (!specificDim) return true;
+          return dim.toLowerCase() === specificDim.toLowerCase() ||
+                 (specificDim.toLowerCase() === 'edad' && dim.toLowerCase().includes('edad')) ||
+                 (specificDim.toLowerCase() === 'rangoedad' && dim.toLowerCase().includes('edad'));
+        });
+
+      const allowedTabs = matchingDims.map(dim => ({
+        key: dim,
+        label: dimensionLabels?.[dim] || dim
+      }));
+
+      let colLabels = baseDef.colLabels || ['Año', 'Valor'];
+      if (currentIndicatorKey === 'oferta-programada' || currentIndicatorKey === 'cursos-ofertados') {
+        colLabels = groupBy ? [dimensionLabels?.[groupBy] || 'Categoría', 'Programas'] : ['Año', 'Programas ofertados'];
+      } else if (currentIndicatorKey === 'cursos-dictados') {
+        colLabels = ['Año', 'Cursos dictados'];
+      } else if (currentIndicatorKey === 'tasa-ejecucion') {
+        colLabels = ['Año', 'Tasa ejecución (%)'];
+      } else if (currentIndicatorKey === 'ingresos-generados' || currentIndicatorKey === 'ingresos-totales') {
+        colLabels = groupBy ? [dimensionLabels?.[groupBy] || 'Categoría', 'Ingresos (CLP)'] : ['Año', 'Ingresos (CLP)'];
+      } else if (currentIndicatorKey === 'matricula-por-programa' || currentIndicatorKey === 'participantes-matriculados') {
+        colLabels = groupBy ? [dimensionLabels?.[groupBy] || 'Categoría', 'Matrículas'] : ['Año', 'Matrículas'];
+      } else if (currentIndicatorKey === 'tasa-aprobacion') {
+        colLabels = ['Área / Programa', 'Aprobación (%)'];
+      } else if (currentIndicatorKey === 'perfil-participante') {
+        colLabels = [dimensionLabels?.[groupBy] || 'Categoría', 'Participantes'];
+      } else if (currentIndicatorKey === 'participantes-unicos') {
+        colLabels = ['Rango de edad', 'Personas'];
+      } else if (currentIndicatorKey === 'recurrencia-formativa') {
+        colLabels = ['Año / Frecuencia', 'Personas'];
+      } else if (disaggregated && groupBy) {
+        colLabels = [dimensionLabels?.[groupBy] || 'Categoría', 'Valor'];
+      } else if (!disaggregated && !groupBy) {
+        colLabels = ['Año', 'Total'];
+      }
+
+      let rows = (table || []).map(row => {
+        let label = '';
+        let value = 0;
+        if (row.label !== undefined) { label = row.label; value = row.value; }
+        else if (row.year !== undefined) { label = String(row.year); value = row.value; }
+        else if (row.categoria !== undefined) { label = row.categoria; value = row.value; }
+        else { label = row[0] || ''; value = row[1] || 0; }
+
+        return [label, value];
+      });
+
+      const isAnnualTable = (!groupBy || groupBy === 'year') && (
+        rows.length === 0 || rows.every(r => /^\d{4}$/.test(String(r[0])))
+      );
+
+      if (isAnnualTable) {
+        const rowsMap = new Map(rows.map(r => [Number(r[0]), r[1]]));
+        const allYrs = Array.from(new Set([...drawerYears, ...rows.map(r => Number(r[0]))])).sort((a, b) => a - b);
+        rows = allYrs.map(yr => [String(yr), rowsMap.has(yr) ? rowsMap.get(yr) : 0]);
+      }
+
+      // Identificar el elemento con mayor cantidad/porcentaje dentro de las filas
+      let topItem = null;
+      if (rows && rows.length > 0) {
+        rows.forEach(r => {
+          const val = Number(r[1]) || 0;
+          if (!topItem || val > topItem.value) {
+            topItem = { label: String(r[0]), value: val };
+          }
+        });
+      }
+
+      let trend = null;
+      if (comparison && comparison.diff !== null && comparison.diff !== undefined) {
+        const diffNum = Number(comparison.diff) || 0;
+        const isPos = diffNum > 0;
+        const isNeutral = diffNum === 0;
+        trend = {
+          delta: diffNum,
+          formattedDelta: isPos ? `+${diffNum.toLocaleString('es-CL')}` : (isNeutral ? '0' : diffNum.toLocaleString('es-CL')),
+          baseline: String(comparison.previousYear),
+          isPositive: isNeutral ? null : isPos,
+          isNeutral
+        };
+      } else if (isAnnualTable && drawerPeriod) {
+        const selYr = Number(drawerPeriod);
+        const prevYr = selYr - 1;
+        const rowsMap = new Map(rows.map(r => [Number(r[0]), Number(r[1]) || 0]));
+        if (rowsMap.has(selYr) && rowsMap.has(prevYr)) {
+          const currV = rowsMap.get(selYr);
+          const prevV = rowsMap.get(prevYr);
+          const diffNum = currV - prevV;
+          const isPos = diffNum > 0;
+          const isNeutral = diffNum === 0;
+          trend = {
+            delta: diffNum,
+            formattedDelta: isPos ? `+${diffNum.toLocaleString('es-CL')}` : (isNeutral ? '0' : String(diffNum)),
+            baseline: String(prevYr),
+            isPositive: isNeutral ? null : isPos,
+            isNeutral
+          };
+        }
+      }
+
+      const selectedYearRowVal = isAnnualTable && drawerPeriod ? (rows.find(r => r[0] === drawerPeriod)?.[1] ?? 0) : total;
+      const finalTotal = (total !== null && total !== undefined) ? total : (selectedYearRowVal ?? 0);
+
+      let customMetric = {
+        label: unit ? `Total (${unit})` : (baseDef.metric?.label || 'Total'),
+        value: (typeof finalTotal === 'number') ? finalTotal.toLocaleString('es-CL') : (formattedTotal ?? finalTotal)
+      };
+      let customTrend = trend;
+
+      if (disaggregated && groupBy && topItem && currentIndicatorKey !== 'tasa-aprobacion') {
+        const dimLabel = dimensionLabels?.[groupBy] || 'Categoría';
+        customMetric = {
+          label: `${dimLabel} con mayor cantidad`,
+          value: topItem.label
+        };
+        customTrend = {
+          rawText: `${(typeof topItem.value === 'number') ? topItem.value.toLocaleString('es-CL') : topItem.value} ${unit || 'registros'}`,
+          isPositive: true
+        };
+      } else {
+        switch (currentIndicatorKey) {
+          case 'tasa-aprobacion': {
+            if (topItem && topItem.label) {
+              customMetric = {
+                label: 'Área con más tasa de aprobación',
+                value: topItem.label
+              };
+              customTrend = {
+                rawText: `${Number(topItem.value).toLocaleString('es-CL')}%`,
+                isPositive: true
+              };
+            } else {
+              customMetric = {
+                label: 'Área con más tasa de aprobación',
+                value: 'Sin datos'
+              };
+              customTrend = null;
+            }
+            break;
+          }
+          default:
+            break;
+        }
+      }
+
+      return {
+        key: currentIndicatorKey,
+        title: title || baseDef.title,
+        desc: description || baseDef.desc,
+        hasData: detailHasData !== undefined ? detailHasData : (rows.length > 0),
+        isError: false,
+        errorMessage: null,
+        metric: customMetric,
+        trend: customTrend,
+        colLabels,
+        rows,
+        allowedTabs
+      };
+    }
+
+    return {
+      key: currentIndicatorKey,
+      title: baseDef.title,
+      desc: baseDef.desc,
+      hasData: false,
+      isError: Boolean(drawerError),
+      errorMessage: drawerError || (drawerLoading ? null : 'No se encontraron datos cargados en el servidor para este indicador.'),
+      metric: null,
+      trend: null,
+      colLabels: baseDef.colLabels || ['Año', 'Valor'],
+      rows: [],
+      allowedTabs: []
+    };
+  }, [currentIndicatorKey, apiIndicatorDetail, drawerError, drawerLoading, drawerYears, drawerPeriod]);
+
+  const displayRows = useMemo(() => {
+    return currentIndicator?.rows || [];
+  }, [currentIndicator]);
+
+  const drawerPeriodText = useMemo(() => {
+    return drawerPeriod ? `Año: ${drawerPeriod}` : '';
+  }, [drawerPeriod]);
+
+  // Preguntas frecuentes del centro de ayuda
+  const faqData = [
+    {
+      q: '¿Qué información presenta el Dashboard de Educación Continua?',
+      a: 'Visualiza estadísticas de oferta académica programada, cursos efectivamente dictados, tasas de ejecución y aprobación, ingresos generados, matrícula de participantes y caracterización demográfica.'
+    },
+    {
+      q: '¿Cómo se calcula la tasa de ejecución y aprobación?',
+      a: 'La tasa de ejecución corresponde a la razón porcentual entre cursos efectivamente dictados y cursos planificados. La tasa de aprobación mide el porcentaje de participantes que completaron y aprobaron los cursos sobre el total de inscritos.'
+    },
+    {
+      q: '¿Cómo filtrar por períodos o características de los programas?',
+      a: 'Usa el panel de filtros laterales para seleccionar el rango de años, semestres, meses de inicio, tipo de programa (diplomados, cursos, etc.), modalidad de impartición y área disciplinar.'
+    }
+  ];
+
   return {
     navigate,
     user,
     logout,
     mobileOpen,
+    mobileFiltersOpen,
+    setMobileFiltersOpen,
+    filtersCollapsed,
+    setFiltersCollapsed,
     cohorteDesde,
     setCohorteDesde,
     cohorteHasta,
     setCohorteHasta,
+    periodoAcumulado,
+    setPeriodoAcumulado,
     semestresSeleccionados,
     setSemestresSeleccionados,
     mesDesde,
@@ -640,6 +1181,8 @@ export const useDashboardEducacionContinua = () => {
     activeMenu,
     handleDrawerToggle,
     handleResetFilters,
+    sectionsOpen,
+    toggleSection,
     filteredNominalGroup1,
     filteredNominalGroup2,
     filteredCohorteData,
@@ -664,5 +1207,24 @@ export const useDashboardEducacionContinua = () => {
     totalRevenueCLP,
     perfilParticipantesData,
     activePeriodosText,
+    // Drawer & Help Center
+    drawerOpen,
+    currentIndicatorKey,
+    drawerPeriod,
+    drawerGroupBy,
+    drawerLoading,
+    drawerError,
+    apiIndicatorDetail,
+    drawerYears,
+    currentIndicator,
+    displayRows,
+    drawerPeriodText,
+    openHelpDialog,
+    setOpenHelpDialog,
+    handleOpenIndicator,
+    handleCloseDrawer,
+    handleDrawerPeriodChange,
+    setDrawerGroupBy,
+    faqData,
   };
 };

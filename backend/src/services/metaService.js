@@ -1,6 +1,7 @@
 const { Op } = require('sequelize');
 const { sequelize, Meta, MetaMetric, IndicatorDefinition, Department } = require('../models');
 const { ValidationError, NotFoundError } = require('../utils/errors');
+const cacheService = require('./cacheService');
 
 const WEIGHT_SCALE = 10000;
 const EXPECTED_WEIGHT_UNITS = 100 * WEIGHT_SCALE;
@@ -19,6 +20,13 @@ const requireFiniteNumber = (value, field) => {
   }
   if (!Number.isFinite(value)) {
     throw new ValidationError(`El campo ${field} debe ser un número finito`);
+  }
+  return value;
+};
+
+const requirePresentValue = (value, field) => {
+  if (value === undefined || value === null || (typeof value === 'string' && value.trim() === '')) {
+    throw new ValidationError(`El campo ${field} es obligatorio y no puede estar vacío`);
   }
   return value;
 };
@@ -125,15 +133,15 @@ const normalizeMetaFields = async (payload, transaction, { partial = false } = {
   }
   
   if (!partial || payload.nombre !== undefined) {
-    data.nombre = payload.nombre === null || payload.nombre === undefined ? null : String(payload.nombre).trim();
+    data.nombre = requireNonEmptyString(payload.nombre, 'nombre');
   }
   if (!partial || payload.inicio !== undefined || payload.fechaInicio !== undefined) {
     const val = payload.inicio !== undefined ? payload.inicio : payload.fechaInicio;
-    data.fechaInicio = val === null || val === undefined || val === '' ? null : val;
+    data.fechaInicio = requirePresentValue(val, 'fechaInicio');
   }
   if (!partial || payload.limite !== undefined || payload.fechaLimite !== undefined) {
     const val = payload.limite !== undefined ? payload.limite : payload.fechaLimite;
-    data.fechaLimite = val === null || val === undefined || val === '' ? null : val;
+    data.fechaLimite = requirePresentValue(val, 'fechaLimite');
   }
   if (!partial || payload.prioridad !== undefined) {
     data.prioridad = payload.prioridad === null || payload.prioridad === undefined ? null : String(payload.prioridad).trim();
@@ -163,50 +171,62 @@ const getById = async (id, options = {}) => {
   return meta;
 };
 
-const create = async (payload, creatorId) => sequelize.transaction(async (transaction) => {
-  const metrics = normalizeMetrics(payload.metrics);
-  await validateIndicators(metrics, transaction);
-  const metaFields = await normalizeMetaFields(payload, transaction);
-  const firstMetric = metrics[0];
-  const meta = await Meta.create({
-    ...metaFields,
-    creatorId,
-    indicatorKey: firstMetric.indicatorKey,
-    valorMeta: firstMetric.targetValue
-  }, { transaction });
-  await MetaMetric.bulkCreate(metrics.map((metric) => ({ ...metric, metaId: meta.id })), { transaction, validate: true });
-  return getById(meta.id, { transaction });
-});
+const create = async (payload, creatorId) => {
+  const result = await sequelize.transaction(async (transaction) => {
+    const metrics = normalizeMetrics(payload.metrics);
+    await validateIndicators(metrics, transaction);
+    const metaFields = await normalizeMetaFields(payload, transaction);
+    const firstMetric = metrics[0];
+    const meta = await Meta.create({
+      ...metaFields,
+      creatorId,
+      indicatorKey: firstMetric.indicatorKey,
+      valorMeta: firstMetric.targetValue
+    }, { transaction });
+    await MetaMetric.bulkCreate(metrics.map((metric) => ({ ...metric, metaId: meta.id })), { transaction, validate: true });
+    return getById(meta.id, { transaction });
+  });
+  cacheService.invalidateMetas();
+  return result;
+};
 
-const update = async (id, payload) => sequelize.transaction(async (transaction) => {
-  const meta = await Meta.findByPk(normalizeMetaId(id), { transaction, lock: transaction.LOCK.UPDATE });
-  if (!meta) {
-    throw new NotFoundError('La meta solicitada no existe');
-  }
-  const metrics = normalizeMetrics(payload.metrics);
-  await validateIndicators(metrics, transaction);
-  const metaFields = await normalizeMetaFields(payload, transaction, { partial: true });
-  const firstMetric = metrics[0];
-  await meta.update({
-    ...META_FIELDS.reduce((result, field) => {
-      if (metaFields[field] !== undefined) result[field] = metaFields[field];
-      return result;
-    }, {}),
-    indicatorKey: firstMetric.indicatorKey,
-    valorMeta: firstMetric.targetValue
-  }, { transaction });
-  await MetaMetric.destroy({ where: { metaId: meta.id }, transaction });
-  await MetaMetric.bulkCreate(metrics.map((metric) => ({ ...metric, metaId: meta.id })), { transaction, validate: true });
-  return getById(meta.id, { transaction });
-});
+const update = async (id, payload) => {
+  const result = await sequelize.transaction(async (transaction) => {
+    const meta = await Meta.findByPk(normalizeMetaId(id), { transaction, lock: transaction.LOCK.UPDATE });
+    if (!meta) {
+      throw new NotFoundError('La meta solicitada no existe');
+    }
+    const metrics = normalizeMetrics(payload.metrics);
+    await validateIndicators(metrics, transaction);
+    const metaFields = await normalizeMetaFields(payload, transaction, { partial: true });
+    const firstMetric = metrics[0];
+    await meta.update({
+      ...META_FIELDS.reduce((result, field) => {
+        if (metaFields[field] !== undefined) result[field] = metaFields[field];
+        return result;
+      }, {}),
+      indicatorKey: firstMetric.indicatorKey,
+      valorMeta: firstMetric.targetValue
+    }, { transaction });
+    await MetaMetric.destroy({ where: { metaId: meta.id }, transaction });
+    await MetaMetric.bulkCreate(metrics.map((metric) => ({ ...metric, metaId: meta.id })), { transaction, validate: true });
+    return getById(meta.id, { transaction });
+  });
+  cacheService.invalidateMetas();
+  return result;
+};
 
-const remove = async (id) => sequelize.transaction(async (transaction) => {
-  const meta = await Meta.findByPk(normalizeMetaId(id), { transaction, lock: transaction.LOCK.UPDATE });
-  if (!meta) {
-    throw new NotFoundError('La meta solicitada no existe');
-  }
-  await meta.destroy({ transaction });
-});
+const remove = async (id) => {
+  const result = await sequelize.transaction(async (transaction) => {
+    const meta = await Meta.findByPk(normalizeMetaId(id), { transaction, lock: transaction.LOCK.UPDATE });
+    if (!meta) {
+      throw new NotFoundError('La meta solicitada no existe');
+    }
+    await meta.destroy({ transaction });
+  });
+  cacheService.invalidateMetas();
+  return result;
+};
 
 module.exports = {
   create,

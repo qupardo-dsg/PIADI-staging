@@ -2,19 +2,16 @@ import React, { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '../../auth';
 import { styles } from './DashboardVcM.styles';
-import logoEcas from '../../../assets/logo_ECAS_white.svg';
+import { Header, Sidebar, KpiCard, DashboardSection, DashboardFilterSidebar } from '../../../components';
 import {
   Box,
   Typography,
   Grid,
   Card,
   Button,
-  Avatar,
   IconButton,
   Divider,
   Drawer,
-  AppBar,
-  Toolbar,
   Select,
   MenuItem,
   Slider,
@@ -34,18 +31,13 @@ import {
   useMediaQuery,
   Switch,
   FormControlLabel,
+  Alert,
+  LinearProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
 } from '@mui/material';
 import {
-  Home as HomeIcon,
-  Dashboard as DashboardIcon,
-  Adjust as TargetIcon,
-  UploadFile as CargaIcon,
-  Shield as AuditoriaIcon,
-  TableChart as TablaIcon,
-  ExitToApp as LogoutIcon,
-  MoreVert as MoreVertIcon,
-  Menu as MenuIcon,
-  ChevronRight as ChevronRightIcon,
   FilterAlt as FilterIcon,
   RestartAlt as ResetIcon,
   School as SchoolIcon,
@@ -57,6 +49,8 @@ import {
   Assignment as AssignmentIcon,
   Public as PublicIcon,
   ExpandMore as ExpandMoreIcon,
+  Help as HelpIcon,
+  Close as CloseIcon,
 } from '@mui/icons-material';
 
 // Lucide Icons
@@ -74,6 +68,47 @@ import { LineChart } from '@mui/x-charts/LineChart';
 import { PieChart } from '@mui/x-charts/PieChart';
 import { Gauge, gaugeClasses } from '@mui/x-charts/Gauge';
 import { cheerfulFiestaPalette } from '@mui/x-charts/colorPalettes';
+import { useDrawingArea } from '@mui/x-charts/hooks';
+
+function PieCenterLabel({ primary, secondary }) {
+  const { width, height, left, top } = useDrawingArea();
+  const centerX = left + width / 2;
+  const centerY = top + height / 2;
+  return (
+    <g style={{ pointerEvents: 'none' }}>
+      <text
+        x={centerX}
+        y={centerY - 6}
+        textAnchor="middle"
+        dominantBaseline="central"
+        style={{
+          fontFamily: "'Inter', sans-serif",
+          fontSize: '22px',
+          fontWeight: 800,
+          fill: '#1E2875',
+        }}
+      >
+        {primary}
+      </text>
+      <text
+        x={centerX}
+        y={centerY + 14}
+        textAnchor="middle"
+        dominantBaseline="central"
+        style={{
+          fontFamily: "'Inter', sans-serif",
+          fontSize: '10px',
+          fontWeight: 600,
+          fill: '#64748b',
+          textTransform: 'uppercase',
+          letterSpacing: '0.5px',
+        }}
+      >
+        {secondary}
+      </text>
+    </g>
+  );
+}
 
 import {
   useDashboardVcM,
@@ -82,7 +117,12 @@ import {
   MESES_LIST,
   TIPOS_LIST,
   MODALIDADES_LIST,
-  AREAS_LIST
+  AREAS_LIST,
+  SEC1_GROUP_BY_MAP,
+  SEC2_GROUP_BY_MAP,
+  SEC4_GROUP_BY_MAP,
+  SEC5_GROUP_BY_MAP,
+  SEC6_GROUP_BY_MAP
 } from './DashboardVcM.hooks';
 
 const dashboardLightTheme = createTheme({
@@ -179,12 +219,13 @@ export const DashboardVcM = () => {
   };
   const getAxisMax = (val) => {
     if (val <= 0) return 10;
-    if (val <= 50) return Math.ceil(val / 10) * 10;
-    if (val <= 200) return Math.ceil(val / 40) * 40;
-    if (val <= 500) return Math.ceil(val / 100) * 100;
-    if (val <= 1500) return Math.ceil(val / 500) * 500;
-    if (val <= 4000) return Math.ceil(val / 1000) * 1000;
-    return Math.ceil(val / 2000) * 2000;
+    const paddedVal = val * 1.15;
+    if (paddedVal <= 50) return Math.ceil(paddedVal / 10) * 10;
+    if (paddedVal <= 200) return Math.ceil(paddedVal / 40) * 40;
+    if (paddedVal <= 500) return Math.ceil(paddedVal / 100) * 100;
+    if (paddedVal <= 1500) return Math.ceil(paddedVal / 500) * 500;
+    if (paddedVal <= 4000) return Math.ceil(paddedVal / 1000) * 1000;
+    return Math.ceil(paddedVal / 2000) * 2000;
   };
   const getAxisTicks = (val) => {
     if (val <= 0) return 5;
@@ -275,20 +316,8 @@ export const DashboardVcM = () => {
     getSortedData,
     getFilteredYears,
     datasetsSec1,
-    filteredProgramasData,
-    ofertaChartData,
-    dictadosSummaryData,
-    effectiveDictadosSeries,
-    effectiveEjecucionSeries,
     kpiCardsData,
-    uniqueParticipantsData,
-    filteredUniqueParticipantsLocal,
-    uniqueParticipantsAgeDist,
-    recurrenceFreqDist,
-    uniqueParticipantsTotal,
-    recurrenciaStats,
     apiFilters,
-    apiPerfilMap,
     apiSummary,
     apiLoading,
     apiError,
@@ -298,22 +327,32 @@ export const DashboardVcM = () => {
     apiActividadesRealizadasSeries,
     apiParticipacionesSeries,
     apiArticulacionesTPSeries,
+    drawerOpen,
+    currentIndicator,
+    drawerPeriod,
+    handleDrawerPeriodChange,
+    drawerGroupBy,
+    setDrawerGroupBy,
+    drawerYears,
+    displayRows,
+    drawerPeriodText,
+    drawerLoading,
+    drawerError,
+    handleOpenIndicator,
+    handleCloseDrawer,
+    openHelpDialog,
+    setOpenHelpDialog,
+    faqData,
   } = useDashboardVcM();
 
   const sectorsList = hasRealData && apiFilters?.filters?.sectores?.length
     ? apiFilters.filters.sectores.map(s => {
-        let val = s.toLowerCase();
-        if (val.includes('público') || val.includes('publico')) val = 'publico';
-        return { label: s, val };
+        return { label: s, val: s };
       })
     : [];
 
   const modalidadesList = hasRealData && apiFilters?.filters?.modalidades?.length
-    ? apiFilters.filters.modalidades.map(m => {
-        let val = m.toLowerCase();
-        if (val.includes('híbrida') || val.includes('hibrida')) val = 'hibrida';
-        return { label: m, val };
-      })
+    ? apiFilters.filters.modalidades.map(m => ({ label: m, val: m }))
     : [];
 
   const availableYears = apiFilters?.filters?.years ?? [];
@@ -385,392 +424,6 @@ export const DashboardVcM = () => {
     </Button>
   );
 
-  // NAV NAVEGACIÃ“N IZQUIERDA
-  const sidebarContent = (
-    <Box sx={styles.drawerContent}>
-      <Box>
-        {/* Logo y Cabecera del Sidebar */}
-        <Box sx={styles.logoContainer}>
-          <Box 
-            component="img" 
-            src={logoEcas} 
-            alt="Logo ECAS" 
-            sx={{ width: 32, height: 32, objectFit: 'contain' }} 
-          />
-          <Box>
-            <Typography variant="subtitle1" sx={styles.logoTitle}>
-              PIADI
-            </Typography>
-            <Typography variant="caption" sx={styles.logoSubtitle}>
-              ECAS
-            </Typography>
-          </Box>
-        </Box>
-
-        <Divider sx={styles.divider} />
-
-        {/* Menú de Navegación */}
-        <Box sx={styles.menuContainer}>
-          {[
-            { text: 'Inicio', icon: <HomeIcon />, path: '/' },
-            { text: 'Dashboards', icon: <DashboardIcon />, path: '/dashboard' },
-            { text: 'Metas', icon: <TargetIcon />, path: '/metas' },
-            { text: 'Carga de datos', icon: <CargaIcon />, path: '/carga-datos' },
-            { text: 'Auditoría', icon: <AuditoriaIcon />, path: '/auditoria' },
-          ].filter((item) => {
-            if (item.text === 'Auditoría') {
-              return (
-                user?.role === 'Rector' || 
-                user?.role === 'Administrador' || 
-                user?.role === 'Director de Administración' ||
-                user?.role === 'Analista de Calidad' ||
-                user?.role === 'Vicerrectoria de Calidad'
-              );
-            }
-            return true;
-          }).map((item) => {
-            const isSelected = item.text === 'Dashboards'; // Highlight dashboards since we are in a dashboard
-            return (
-              <Box
-                key={item.text}
-                onClick={() => {
-                  handleDrawerToggle();
-                  if (item.path !== '#') {
-                    navigate(item.path);
-                  }
-                }}
-                sx={styles.menuItem(isSelected)}
-              >
-                {item.icon}
-                <Typography 
-                  variant="body2" 
-                  sx={{ 
-                    fontWeight: isSelected ? 600 : 500, 
-                    noWrap: true,
-                    color: isSelected ? '#ffffff' : 'rgba(255, 255, 255, 0.7)'
-                  }}
-                >
-                  {item.text}
-                </Typography>
-              </Box>
-            );
-          })}
-        </Box>
-      </Box>
-
-      {/* Sección inferior del Sidebar */}
-      <Box sx={styles.bottomSection}>
-        <Box onClick={logout} sx={styles.logoutButton}>
-          <LogoutIcon />
-          <Typography variant="body2" sx={{ fontWeight: 500 }}>
-            Cerrar Sesión
-          </Typography>
-        </Box>
-
-        <Box sx={styles.userCard}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexGrow: 1 }}>
-            <Avatar sx={styles.userAvatar}>
-              {user?.username ? user.username.split(/[. @]/).filter(Boolean).slice(0, 2).map(n => n[0].toUpperCase()).join('') : 'JD'}
-            </Avatar>
-            <Box>
-              <Typography variant="body2" sx={{ fontWeight: 600, color: '#ffffff', lineHeight: 1.2 }}>
-                {user?.username || 'John Doe'}
-              </Typography>
-              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}>
-                Ver perfil
-              </Typography>
-            </Box>
-          </Box>
-          <IconButton size="small" sx={{ color: 'rgba(255,255,255,0.6)' }}>
-            <MoreVertIcon fontSize="small" />
-          </IconButton>
-        </Box>
-      </Box>
-    </Box>
-  );
-
-  const filtersContent = (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', bgcolor: '#FFFFFF' }}>
-      {/* Encabezado Filtros */}
-      <Box sx={styles.filtersHeader}>
-        <FilterIcon sx={{ color: '#E27800' }} />
-        <Typography variant="h6" sx={styles.filtersTitle}>
-          Filtros VcM
-        </Typography>
-        <IconButton 
-          onClick={() => setMobileFiltersOpen(false)} 
-          sx={{ display: { xs: 'flex', md: 'none' }, ml: 'auto' }}
-        >
-          <X size={20} />
-        </IconButton>
-      </Box>
-
-      <Divider />
-
-      {/* Scroll de Filtros */}
-      <Box sx={styles.filtersScrollContent}>
-        {/* Filtro Rango de Años (Slider de dos perillas) */}
-        <Box sx={{ ...styles.filterSection, pt: 2.5 }}>
-          <Typography variant="subtitle2" sx={styles.filterSectionTitle}>
-            Año
-          </Typography>
-          <Box sx={{ px: 1, mt: 1 }}>
-            <Slider
-              value={[parseInt(cohorteDesde), parseInt(cohorteHasta)]}
-              onChange={(e, val) => {
-                setCohorteDesde(String(val[0]));
-                setCohorteHasta(String(val[1]));
-              }}
-              min={minYear}
-              max={maxYear}
-              step={1}
-              marks={availableYears.length ? availableYears.map(y => ({ value: y, label: String(y) })) : [
-                { value: 2023, label: '2023' },
-                { value: 2024, label: '2024' },
-                { value: 2025, label: '2025' },
-                { value: 2026, label: '2026' }
-              ]}
-              valueLabelDisplay="auto"
-              sx={styles.ageSliderStyle}
-            />
-            {/* Indicador del rango seleccionado */}
-            <Typography variant="body2" sx={{ textAlign: 'center', mt: 1.5, fontWeight: 600, color: '#1E2875', fontSize: '13px' }}>
-              {cohorteDesde === cohorteHasta ? cohorteDesde : `${cohorteDesde} - ${cohorteHasta}`}
-            </Typography>
-
-            {/* Checkbox para Periodo Acumulado */}
-            {cohorteDesde !== cohorteHasta && (
-              <Box sx={{ display: 'flex', justifyContent: 'center', mt: 0.5 }}>
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      checked={periodoAcumulado}
-                      onChange={(e) => setPeriodoAcumulado(e.target.checked)}
-                      size="small"
-                      sx={{
-                        color: '#1E2875',
-                        '&.Mui-checked': {
-                          color: '#1DC2A0',
-                        },
-                      }}
-                    />
-                  }
-                  label={
-                    <Typography sx={{ fontFamily: "'Inter', sans-serif", fontSize: '12px', fontWeight: 500, color: '#475569' }}>
-                      Período acumulado
-                    </Typography>
-                  }
-                  sx={{ mx: 0 }}
-                />
-              </Box>
-            )}
-          </Box>
-        </Box>
-
-        {hasRealData && (
-        <>
-        {/* Accordion: Convenios (default expanded) */}
-        <Accordion defaultExpanded sx={{ boxShadow: 'none', border: 'none', mt: -1.5, '&:before': { display: 'none' } }}>
-          <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ p: 0, minHeight: 0, '& .MuiAccordionSummary-content': { my: 1 } }}>
-            <Typography sx={{ fontSize: 13, fontWeight: 700, color: '#475569', textTransform: 'none', letterSpacing: '0.06em' }}>
-              Convenios
-            </Typography>
-          </AccordionSummary>
-          <AccordionDetails sx={{ p: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-            
-            {/* Sector */}
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-              <Typography variant="caption" sx={{ fontWeight: 600, color: '#9E9E9E', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                Sector
-              </Typography>
-              <Box sx={{ display: 'flex', flexWrap: 'wrap' }}>
-                {sectorsList.map((chip) => (
-                  <FilterChip
-                    key={chip.val}
-                    label={chip.label}
-                    selected={selectedSectores.includes(chip.val)}
-                    onClick={() => toggleChip(selectedSectores, setSelectedSectores, chip.val)}
-                  />
-                ))}
-              </Box>
-            </Box>
-
-            {/* Tipo de convenio */}
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-              <Typography variant="caption" sx={{ fontWeight: 600, color: '#9E9E9E', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                Tipo de convenio
-              </Typography>
-              <Box sx={{ display: 'flex', flexWrap: 'wrap' }}>
-                {dynamicTipos.map((chip) => (
-                  <FilterChip
-                    key={chip.val}
-                    label={chip.label}
-                    selected={selectedTiposConvenio.includes(chip.val)}
-                    onClick={() => toggleChip(selectedTiposConvenio, setSelectedTiposConvenio, chip.val)}
-                  />
-                ))}
-              </Box>
-            </Box>
-
-            {/* Estado */}
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-              <Typography variant="caption" sx={{ fontWeight: 600, color: '#9E9E9E', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                Estado
-              </Typography>
-              <Box sx={{ display: 'flex', flexWrap: 'wrap' }}>
-                {[
-                  { label: 'Activo', val: 'activo' },
-                  { label: 'Cerrado', val: 'cerrado' },
-                  { label: 'En renovación', val: 'renovacion' }
-                ].map((chip) => (
-                  <FilterChip
-                    key={chip.val}
-                    label={chip.label}
-                    selected={selectedEstados.includes(chip.val)}
-                    onClick={() => toggleChip(selectedEstados, setSelectedEstados, chip.val)}
-                  />
-                ))}
-              </Box>
-            </Box>
-
-            {/* Área vinculada */}
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-              <Typography variant="caption" sx={{ fontWeight: 600, color: '#9E9E9E', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                Área vinculada
-              </Typography>
-              <Box sx={{ display: 'flex', flexWrap: 'wrap' }}>
-                {dynamicAreas.map((chip) => (
-                  <FilterChip
-                    key={chip.val}
-                    label={chip.label}
-                    selected={selectedAreas.includes(chip.val)}
-                    onClick={() => toggleChip(selectedAreas, setSelectedAreas, chip.val)}
-                  />
-                ))}
-              </Box>
-            </Box>
-
-          </AccordionDetails>
-        </Accordion>
-
-        {/* Accordion: Actividades (default collapsed) */}
-        <Accordion sx={{ boxShadow: 'none', border: 'none', '&:before': { display: 'none' } }}>
-          <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ p: 0, minHeight: 0, '& .MuiAccordionSummary-content': { my: 1 } }}>
-            <Typography sx={{ fontSize: 13, fontWeight: 700, color: '#475569', textTransform: 'none', letterSpacing: '0.06em' }}>
-              Actividades
-            </Typography>
-          </AccordionSummary>
-          <AccordionDetails sx={{ p: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-
-            {/* Línea VcM */}
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-              <Typography variant="caption" sx={{ fontWeight: 600, color: '#9E9E9E', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                Línea VcM
-              </Typography>
-              <Box sx={{ display: 'flex', flexWrap: 'wrap' }}>
-                {dynamicLineas.map((chip) => (
-                  <FilterChip
-                    key={chip.val}
-                    label={chip.label}
-                    selected={selectedLineas.includes(chip.val)}
-                    onClick={() => toggleChip(selectedLineas, setSelectedLineas, chip.val)}
-                  />
-                ))}
-              </Box>
-            </Box>
-
-            {/* Modalidad */}
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-              <Typography variant="caption" sx={{ fontWeight: 600, color: '#9E9E9E', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                Modalidad
-              </Typography>
-              <Box sx={{ display: 'flex', flexWrap: 'wrap' }}>
-                {modalidadesList.map((chip) => (
-                  <FilterChip
-                    key={chip.val}
-                    label={chip.label}
-                    selected={selectedModalidades.includes(chip.val)}
-                    onClick={() => toggleChip(selectedModalidades, setSelectedModalidades, chip.val)}
-                  />
-                ))}
-              </Box>
-            </Box>
-
-          </AccordionDetails>
-        </Accordion>
-
-        {/* Accordion: Articulaciones TP (default collapsed) */}
-        <Accordion sx={{ boxShadow: 'none', border: 'none', '&:before': { display: 'none' } }}>
-          <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ p: 0, minHeight: 0, '& .MuiAccordionSummary-content': { my: 1 } }}>
-            <Typography sx={{ fontSize: 13, fontWeight: 700, color: '#475569', textTransform: 'none', letterSpacing: '0.06em' }}>
-              Articulaciones TP
-            </Typography>
-          </AccordionSummary>
-          <AccordionDetails sx={{ p: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-
-            {/* Plataforma */}
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-              <Typography variant="caption" sx={{ fontWeight: 600, color: '#9E9E9E', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                Plataforma
-              </Typography>
-              <Box sx={{ display: 'flex', flexWrap: 'wrap' }}>
-                {dynamicPlataformas.map((chip) => (
-                  <FilterChip
-                    key={chip.val}
-                    label={chip.label}
-                    selected={selectedPlataformas.includes(chip.val)}
-                    onClick={() => toggleChip(selectedPlataformas, setSelectedPlataformas, chip.val)}
-                  />
-                ))}
-              </Box>
-            </Box>
-
-            {/* Tipo articulación */}
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-              <Typography variant="caption" sx={{ fontWeight: 600, color: '#9E9E9E', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                Tipo articulación
-              </Typography>
-              <Box sx={{ display: 'flex', flexWrap: 'wrap' }}>
-                {dynamicTiposArticulacion.map((chip) => (
-                  <FilterChip
-                    key={chip.val}
-                    label={chip.label}
-                    selected={selectedTiposArticulacion.includes(chip.val)}
-                    onClick={() => toggleChip(selectedTiposArticulacion, setSelectedTiposArticulacion, chip.val)}
-                  />
-                ))}
-              </Box>
-            </Box>
-
-          </AccordionDetails>
-        </Accordion>
-        </>
-        )}
-      </Box>
-
-      {!apiLoading && !hasRealData && (
-        <Box sx={{ mx: 2, mb: 2, p: 2, bgcolor: '#FEF3C7', borderRadius: 2, border: '1px solid #F59E0B' }}>
-          <Typography sx={{ fontSize: '13px', color: '#92400E', textAlign: 'center', fontWeight: 500 }}>
-            No hay datos disponibles para los filtros.
-          </Typography>
-        </Box>
-      )}
-
-      {/* Footer Filtros */}
-      <Box sx={styles.filtersFooter}>
-        <Button
-          fullWidth
-          variant="outlined"
-          startIcon={<ResetIcon />}
-          onClick={handleResetFilters}
-          sx={styles.resetFiltersButton}
-        >
-          Restablecer filtros
-        </Button>
-      </Box>
-    </Box>
-  );
-
   return (
     <ThemeProvider theme={dashboardLightTheme}>
       <Box sx={styles.mainLayout}>
@@ -808,6 +461,9 @@ export const DashboardVcM = () => {
           border-radius: 8px !important;
           padding: 3px !important;
           border: none !important;
+          width: fit-content !important;
+          display: inline-flex !important;
+          align-self: flex-start !important;
         }
         .vcm-dashboard .custom-toggle-btn {
           background: transparent !important;
@@ -830,26 +486,6 @@ export const DashboardVcM = () => {
         }
         .vcm-dashboard .custom-toggle-btn.Mui-selected:hover {
           background-color: #ffffff !important;
-        }
-        .collapsible-card {
-          background: #ffffff;
-          border: 1px solid #E2E8F0;
-          border-radius: 12px;
-          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-          margin-bottom: 12px;
-          overflow: hidden;
-          transition: all 0.2s ease-in-out;
-        }
-        .collapsible-card:hover {
-          box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
-          border-color: #CBD5E1;
-        }
-        .collapsible-header {
-          background: #F8FAFC;
-          transition: background 0.2s ease;
-        }
-        .collapsible-header:hover {
-          background: #F1F5F9;
         }
         .vcm-table {
           width: 100%;
@@ -878,377 +514,331 @@ export const DashboardVcM = () => {
         .sortable-th:hover {
           background-color: #F1F5F9;
         }
-        /* Forzar que las líneas del grid y de los ejes sean lisas y continuas */
-        .collapsible-body {
-          padding: 24px 30px !important;
-        }
       `}} />
 
-      {/* Navigation Bars */}
-      <AppBar position="fixed" sx={styles.mobileAppBar}>
-        <Toolbar sx={styles.mobileToolbar}>
-          <IconButton
-            color="inherit"
-            edge="start"
-            onClick={handleDrawerToggle}
-            sx={{ mr: 2 }}
-          >
-            <MenuIcon />
-          </IconButton>
-          <Typography variant="subtitle1" sx={{ fontWeight: 700, letterSpacing: 0.5, flexGrow: 1 }}>
-            PIADI - VcM
-          </Typography>
+      {/* SIDEBAR TRANSVERSAL (Escritorio + Drawer + AppBar Móvil con botón de filtros) */}
+      <Sidebar
+        mobileRightAction={
           <IconButton
             color="inherit"
             onClick={() => setMobileFiltersOpen(true)}
-            sx={{ ml: 'auto' }}
+            sx={{ p: 0.5, color: '#ffffff' }}
           >
             <FilterIcon />
           </IconButton>
-        </Toolbar>
-      </AppBar>
-
-      {/* Sidebar fijo para Desktop */}
-      <Box component="nav" sx={styles.sidebar}>
-        {sidebarContent}
-      </Box>
-
-      {/* Sidebar Drawer temporal para MÃ³vil */}
-      <Drawer
-        variant="temporary"
-        open={mobileOpen}
-        onClose={handleDrawerToggle}
-        ModalProps={{ keepMounted: true }}
-        sx={{
-          display: { xs: 'block', md: 'none' },
-          '& .MuiDrawer-paper': { boxSizing: 'border-box', width: 260, border: 'none' },
-        }}
-      >
-        {sidebarContent}
-      </Drawer>
+        }
+      />
 
       {/* ----------------- CONTENIDO PRINCIPAL ----------------- */}
       <Box component="main" sx={styles.contentArea} className="vcm-dashboard">
         
         {/* Encabezado y Breadcrumbs */}
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
-          <Box sx={styles.breadcrumbsContainer}>
-            <Typography 
-              variant="body1" 
-              onClick={() => navigate('/')}
-              sx={{ cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}
-            >
-              Inicio
-            </Typography>
-            <ChevronRightIcon sx={{ fontSize: '16px', opacity: 0.7 }} />
-            <Typography 
-              variant="body1" 
-              onClick={() => navigate('/dashboard')}
-              sx={{ cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}
-            >
-              Central de Dashboards
-            </Typography>
-            <ChevronRightIcon sx={{ fontSize: '16px', opacity: 0.7 }} />
-            <Typography variant="body1" sx={{ color: '#1E2875', fontWeight: 600 }}>
-              Vinculación con el medio
-            </Typography>
-          </Box>
-
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2, width: '100%' }}>
-            <Box sx={styles.panelHeader}>
-              <Box sx={styles.panelIconContainer}>
-                <PublicIcon />
-              </Box>
-              <Box>
-                 <Typography variant="h5" sx={styles.panelTitle}>
-                  Dashboard de Vinculación con el Medio
-                </Typography>
-                <Typography variant="body2" sx={{ color: '#6B7280' }}>
-                  Visualización de estadísticas y métricas del departamento de Vinculación con el Medio
-                </Typography>
-              </Box>
-            </Box>
-          </Box>
-        </Box>
-
-
+        <Header
+          title="Dashboard de Vinculación con el Medio"
+          subtitle="Visualización de estadísticas y métricas del departamento de Vinculación con el Medio"
+          icon={<PublicIcon />}
+          iconColor="#E27800"
+          loading={apiLoading}
+        />
 
         {/* ----------------- SECCIÓN 1: TARJETAS KPI (3 de Vinculación) ----------------- */}
-        <Grid container spacing={3}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, 1fr)' }, gap: 3, width: '100%' }}>
           {kpiCardsData.map((kpi) => {
             const Icon = kpi.icon;
             return (
-              <Grid item xs={12} sm={6} md={4} key={kpi.key} sx={{ display: 'flex' }}>
-                <Card 
-                  id={kpi.key} 
-                  sx={{ 
-                    p: 2.5, 
-                    display: 'flex', 
-                    flexDirection: 'column', 
-                    justifyContent: 'space-between',
-                    flexGrow: 1,
-                    height: '100%',
-                    minHeight: 120,
-                    borderLeft: `4px solid ${kpi.color}`,
-                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                    '&:hover': {
-                      transform: 'translateY(-2px)',
-                      boxShadow: `0 8px 16px -4px ${kpi.color}1f`,
-                      borderColor: kpi.color
-                    }
-                  }}
-                >
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', width: '100%' }}>
-                    <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-                      <Typography variant="caption" sx={{ ...styles.kpiCardHeaderLabel, color: kpi.color }}>
-                        {kpi.title}
-                      </Typography>
-                      <Typography variant="h4" sx={styles.kpiCardHeaderVal}>
-                        {apiLoading ? '...' : (isNoData ? '-' : kpi.value)}
-                      </Typography>
-                    </Box>
-                    <Box sx={styles.kpiCardHeaderIcon(kpi.color)}>
-                      <Icon size={24} />
-                    </Box>
-                  </Box>
-
-                  <Box sx={{ display: 'flex', alignItems: 'center', mt: 2 }}>
-                    {kpi.isBaseline ? (
-                      <Typography variant="caption" sx={styles.kpiCardFooterLabel}>
-                        Año {cohorteDesde} es la línea base
-                      </Typography>
-                    ) : (
-                      <Typography variant="caption" sx={styles.kpiCardFooterLabel}>
-                        {kpi.isAccumulated 
-                          ? 'vs Año base' 
-                          : (cohorteDesde === cohorteHasta ? 'vs Año anterior' : 'vs Año más anterior')
-                        } ({kpi.compareYearLabel}): {isNoData ? '-' : kpi.baseVal} {' '}
-                        {kpi.hasEvo && (
-                          <Box component="span" sx={styles.kpiEvoBadge(isNoData ? true : kpi.isPositive)}>
-                            {isNoData ? '→' : (kpi.isPositive ? '↑' : '↓')} {isNoData ? '-' : kpi.evolution}
-                          </Box>
-                        )}
-                      </Typography>
-                    )}
-                  </Box>
-                </Card>
-              </Grid>
+              <KpiCard
+                key={kpi.key}
+                id={kpi.key}
+                label={kpi.title}
+                value={kpi.value}
+                icon={<Icon size={24} />}
+                accentColor={kpi.color}
+                hasData={hasRealData && kpi.value !== null}
+                loading={apiLoading}
+                compareText={
+                  kpi.isBaseline
+                    ? `Año ${cohorteDesde} es la línea base`
+                    : `${kpi.isAccumulated ? 'vs Año base' : (cohorteDesde === cohorteHasta ? 'vs Año anterior' : 'vs Año más anterior')} (${kpi.compareYearLabel}): ${kpi.baseVal}`
+                }
+                evolution={kpi.hasEvo ? kpi.evolution : null}
+                isPositive={kpi.isPositive}
+                onClick={() => handleOpenIndicator(kpi.key)}
+              />
             );
           })}
-        </Grid>
+        </Box>
 
         {/* ----------------- SECCIÓN 1: Total de convenios vigentes ----------------- */}
-        <div className="collapsible-card" style={{ marginTop: '12px' }}>
-          <div className="collapsible-header" onClick={() => toggleSection('sec1')} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', padding: '16px 20px' }}>
-            <h2 style={{ fontFamily: "'Inter', sans-serif", fontSize: '18px', fontWeight: 600, color: '#1E2875', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <Award size={20} style={{ color: '#E27800' }} />
-              Total de convenios vigentes
-            </h2>
-            <ChevronDown style={{ transform: sectionsOpen.sec1 ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 200ms', color: '#1E2875' }} size={18} />
-          </div>
-          {sectionsOpen.sec1 && (
-            <div className="collapsible-body" style={{ padding: '20px', borderTop: '1px solid #E0E0E0' }}>
-              {isNoData ? (
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 260, color: '#64748b', fontSize: '13px', fontWeight: 500, border: '1px dashed #E2E8F0', borderRadius: '12px', bgcolor: '#F8FAFC', width: '100%' }}>
-                  Sin datos disponibles
+        <DashboardSection
+          title="Total de convenios vigentes"
+          icon={<Award size={20} />}
+          iconColor="#E27800"
+          isOpen={sectionsOpen.sec1}
+          onToggle={() => toggleSection('sec1')}
+          hasData={!isNoData}
+          noDataHeight={260}
+        >
+          <Grid container spacing={3}>
+            {/* Distribución por año */}
+            <Grid item xs={12}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                <Typography variant="subtitle2" sx={{ fontSize: '17px', fontWeight: 700, color: '#1E2875' }}>
+                  Distribución por año
+                </Typography>
+                <Button
+                  size="small"
+                  variant="text"
+                  onClick={() => handleOpenIndicator('convenios-activos', null)}
+                  sx={{
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    color: '#1E2875',
+                    textTransform: 'none',
+                    py: 0.25,
+                    px: 1,
+                    borderRadius: '6px',
+                    '&:hover': { bgcolor: 'rgba(30, 40, 117, 0.08)' }
+                  }}
+                >
+                  Ver detalles
+                </Button>
+              </Box>
+              <Box sx={{ minHeight: 260, pb: 2, width: '100%' }}>
+                {getFilteredYears(datasetsSec1['Año']).length > 0 ? (
+                  <BarChart
+                    colors={cheerfulFiestaPalette}
+                    grid={{ horizontal: true }}
+                    xAxis={[{ 
+                      scaleType: 'band', 
+                      data: getFilteredYears(datasetsSec1['Año']).map(d => d.label)
+                    }]}
+                    series={[{ 
+                      data: getFilteredYears(datasetsSec1['Año']).map(d => d.value),
+                      label: 'Convenios Vigentes',
+                      barLabel: 'value',
+                      barLabelPlacement: 'outside'
+                    }]}
+                    yAxis={[{ 
+                      max: getAxisMax(Math.max(...getFilteredYears(datasetsSec1['Año']).map(d => d.value), 0)), 
+                      width: 35,
+                      domainLimit: 'strict',
+                      tickInterval: getAxisTicks(Math.max(...getFilteredYears(datasetsSec1['Año']).map(d => d.value), 0))
+                    }]}
+                    height={270}
+                    margin={{ top: 30, right: 10, bottom: 65, left: 40 }}
+                    slotProps={{ legend: { direction: 'horizontal', position: { vertical: 'bottom', horizontal: 'center' }, labelStyle: { fontSize: '11px' } } }}
+                  />
+                ) : (
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 260, color: '#64748b', fontSize: '13px', fontWeight: 500, border: '1px dashed #E2E8F0', borderRadius: '12px', bgcolor: '#F8FAFC', width: '100%' }}>
+                    Sin datos disponibles
+                  </Box>
+                )}
+              </Box>
+            </Grid>
+
+            <Grid item xs={12}>
+              <Divider sx={{ my: 1.5 }} />
+            </Grid>
+
+            {/* Convenios vigentes por categoría */}
+            <Grid item xs={12}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mb: 2 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="subtitle2" sx={{ fontSize: '17px', fontWeight: 700, color: '#1E2875' }}>
+                    Convenios vigentes por categoría
+                  </Typography>
+                  <Button
+                    size="small"
+                    variant="text"
+                    onClick={() => handleOpenIndicator('convenios-activos', SEC1_GROUP_BY_MAP[sec1Segment])}
+                    sx={{
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      color: '#1E2875',
+                      textTransform: 'none',
+                      py: 0.25,
+                      px: 1,
+                      borderRadius: '6px',
+                      '&:hover': { bgcolor: 'rgba(30, 40, 117, 0.08)' }
+                    }}
+                  >
+                    Ver detalles
+                  </Button>
                 </Box>
-              ) : (
-                <Grid container spacing={3}>
-                  {/* Distribución por año */}
-                  <Grid item xs={12}>
-                    <Typography variant="subtitle2" sx={{ fontSize: '17px', fontWeight: 700, color: '#1E2875', mb: 1 }}>
-                      Distribución por año
-                    </Typography>
-                    <Box sx={{ minHeight: 260, pb: 2, width: '100%' }}>
-                      {getFilteredYears(datasetsSec1['Año']).length > 0 ? (
-                        <BarChart
-                          colors={cheerfulFiestaPalette}
-                          grid={{ horizontal: true }}
-                          xAxis={[{ 
-                            scaleType: 'band', 
-                            data: getFilteredYears(datasetsSec1['Año']).map(d => d.label)
-                          }]}
-                          series={[{ 
-                            data: getFilteredYears(datasetsSec1['Año']).map(d => d.value),
-                            label: 'Convenios Vigentes',
-                            barLabel: 'value',
-                            barLabelPlacement: 'outside'
-                          }]}
-                          yAxis={[{ 
-                            max: getAxisMax(Math.max(...getFilteredYears(datasetsSec1['Año']).map(d => d.value), 0)), 
-                            width: 35,
-                            domainLimit: 'strict',
-                            tickInterval: getAxisTicks(Math.max(...getFilteredYears(datasetsSec1['Año']).map(d => d.value), 0))
-                          }]}
-                          height={270}
-                          margin={{ top: 30, right: 10, bottom: 65, left: 40 }}
-                          slotProps={{ legend: { direction: 'row', position: { vertical: 'bottom', horizontal: 'middle' }, labelStyle: { fontSize: '11px' } } }}
-                        />
-                      ) : (
-                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#9E9E9E' }}>
-                          No hay datos en el rango seleccionado
-                        </Box>
-                      )}
-                    </Box>
-                  </Grid>
+                
+                <ToggleButtonGroup
+                  value={sec1Segment}
+                  exclusive
+                  onChange={(e, val) => val && setSec1Segment(val)}
+                  size="small"
+                >
+                  {['Sector', 'Tipo', 'Contraparte', 'Área vinculada'].map((lbl) => (
+                    <ToggleButton key={lbl} value={lbl} className="custom-toggle-btn">
+                      {lbl}
+                    </ToggleButton>
+                  ))}
+                </ToggleButtonGroup>
+              </Box>
 
-                  <Grid item xs={12}>
-                    <Divider sx={{ my: 1.5 }} />
-                  </Grid>
+              <Box sx={{ minHeight: 260, pb: 2 }}>
+                {sec1Segment === 'Sector' && renderDataOrPlaceholder(
+                  datasetsSec1.Sector.some(d => d.value > 0),
+                  <PieChart
+                    colors={cheerfulFiestaPalette}
+                    series={[{
+                      data: datasetsSec1.Sector.filter(d => d.value > 0).map((d, i) => ({ id: i, value: d.value, label: d.label })),
+                      innerRadius: 40,
+                      outerRadius: 80,
+                    }]}
+                    height={260}
+                    margin={{ top: 10, bottom: 65, left: 10, right: 10 }}
+                    slotProps={{ legend: { direction: 'horizontal', position: { vertical: 'bottom', horizontal: 'center' }, labelStyle: { fontSize: '10px' } } }}
+                  />,
+                  260
+                )}
 
-                  {/* Convenios vigentes por categoría */}
-                  <Grid item xs={12}>
-                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', mb: 2, gap: 1 }}>
-                      <Typography variant="subtitle2" sx={{ fontSize: '17px', fontWeight: 700, color: '#1E2875' }}>
-                        Convenios vigentes por categoría
-                      </Typography>
-                      
-                      <ToggleButtonGroup
-                        value={sec1Segment}
-                        exclusive
-                        onChange={(e, val) => val && setSec1Segment(val)}
-                        size="small"
-                      >
-                        {['Sector', 'Tipo', 'Contraparte', 'Área vinculada'].map((lbl) => (
-                          <ToggleButton key={lbl} value={lbl} className="custom-toggle-btn">
-                            {lbl}
-                          </ToggleButton>
+                {sec1Segment === 'Tipo' && renderDataOrPlaceholder(
+                  datasetsSec1.Tipo.some(d => d.value > 0),
+                  <BarChart
+                    colors={cheerfulFiestaPalette}
+                    grid={{ horizontal: true }}
+                    xAxis={[{ 
+                      scaleType: 'band', 
+                      data: datasetsSec1.Tipo.map(d => d.label), 
+                      tickLabelStyle: { fontSize: isMobile ? 8 : 10, fontWeight: 500 },
+                      valueFormatter: (value, context) => {
+                          if (isMobile && context?.location === 'tick' && value && value.length > 6) return value.substring(0, 4) + '...';
+                        return value;
+                      }
+                    }]}
+                    series={datasetsSec1.Tipo.map((d, idx) => ({
+                      data: datasetsSec1.Tipo.map((x, i) => i === idx ? x.value : null),
+                      label: d.label,
+                      stack: 'total',
+                      barLabel: 'value',
+                      barLabelPlacement: 'outside',
+                      valueFormatter: (value) => value === null ? null : String(value)
+                    }))}
+                    yAxis={[{ 
+                      max: getAxisMax(Math.max(...datasetsSec1.Tipo.map(d => d.value), 0)), 
+                      width: 35,
+                      domainLimit: 'strict',
+                      tickInterval: getAxisTicks(Math.max(...datasetsSec1.Tipo.map(d => d.value), 0))
+                    }]}
+                    height={250}
+                    margin={{ top: 30, right: 10, bottom: 65, left: 40 }}
+                    slotProps={{
+                      legend: { direction: 'horizontal', position: { vertical: 'bottom', horizontal: 'center' }, labelStyle: { fontSize: '10px' } },
+                      tooltip: { trigger: 'axis' }
+                    }}
+                  />,
+                  250
+                )}
+
+                {sec1Segment === 'Contraparte' && renderDataOrPlaceholder(
+                  datasetsSec1.Contraparte.some(d => d.value > 0),
+                  <div style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid #E0E0E0', borderRadius: 4 }}>
+                    <table className="vcm-table">
+                      <thead>
+                        <tr>
+                          <th className="sortable-th" onClick={() => handleSort('sec1', 'label')}>
+                            Contraparte {sortStates.sec1.key === 'label' ? (sortStates.sec1.asc ? ' ▲' : ' ▼') : ''}
+                          </th>
+                          <th className="sortable-th" style={{ textAlign: 'right' }} onClick={() => handleSort('sec1', 'value')}>
+                            Vigentes {sortStates.sec1.key === 'value' ? (sortStates.sec1.asc ? ' ▲' : ' ▼') : ''}
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {getSortedData(datasetsSec1.Contraparte, sortStates.sec1).map((row, idx) => (
+                          <tr key={idx}>
+                            <td>{row.label}</td>
+                            <td style={{ textAlign: 'right' }}>{row.value}</td>
+                          </tr>
                         ))}
-                      </ToggleButtonGroup>
-                    </Box>
+                      </tbody>
+                    </table>
+                  </div>,
+                  220
+                )}
 
-                    <Box sx={{ height: 260 }}>
-                      {sec1Segment === 'Sector' && (
-                        <PieChart
-                          colors={cheerfulFiestaPalette}
-                          series={[{
-                            data: datasetsSec1.Sector.filter(d => d.value > 0).map((d, i) => ({ id: i, value: d.value, label: d.label })),
-                            innerRadius: 40,
-                            outerRadius: 80,
-                          }]}
-                          height={220}
-                          slotProps={{ legend: { direction: 'row', position: { vertical: 'bottom', horizontal: 'middle' }, labelStyle: { fontSize: '10px' } } }}
-                        />
-                      )}
-
-                      {sec1Segment === 'Tipo' && (
-                        <BarChart
-                          colors={cheerfulFiestaPalette}
-                          grid={{ horizontal: true }}
-                          xAxis={[{ 
-                            scaleType: 'band', 
-                            data: datasetsSec1.Tipo.map(d => d.label), 
-                            tickLabelStyle: { fontSize: isMobile ? 8 : 10, fontWeight: 500 },
-                            valueFormatter: (value, context) => {
-                                if (isMobile && context?.location === 'tick' && value && value.length > 6) return value.substring(0, 4) + '...';
-                              return value;
-                            }
-                          }]}
-                          series={datasetsSec1.Tipo.map((d, idx) => ({
-                            data: datasetsSec1.Tipo.map((x, i) => i === idx ? x.value : null),
-                            label: d.label,
-                            stack: 'total',
-                            barLabel: 'value',
-                            barLabelPlacement: 'outside'
-                          }))}
-                          yAxis={[{ 
-                            max: getAxisMax(Math.max(...datasetsSec1.Tipo.map(d => d.value), 0)), 
-                            width: 35,
-                            domainLimit: 'strict',
-                            tickInterval: getAxisTicks(Math.max(...datasetsSec1.Tipo.map(d => d.value), 0))
-                          }]}
-                          height={250}
-                          margin={{ top: 30, right: 10, bottom: 65, left: 40 }}
-                          slotProps={{ legend: { direction: 'row', position: { vertical: 'bottom', horizontal: 'middle' }, labelStyle: { fontSize: '10px' } } }}
-                        />
-                      )}
-
-                      {sec1Segment === 'Contraparte' && (
-                        <div style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid #E0E0E0', borderRadius: 4 }}>
-                          <table className="vcm-table">
-                            <thead>
-                              <tr>
-                                <th className="sortable-th" onClick={() => handleSort('sec1', 'label')}>
-                                  Contraparte {sortStates.sec1.key === 'label' ? (sortStates.sec1.asc ? ' ▲' : ' ▼') : ''}
-                                </th>
-                                <th className="sortable-th" style={{ textAlign: 'right' }} onClick={() => handleSort('sec1', 'value')}>
-                                  Vigentes {sortStates.sec1.key === 'value' ? (sortStates.sec1.asc ? ' ▲' : ' ▼') : ''}
-                                </th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {getSortedData(datasetsSec1.Contraparte, sortStates.sec1).map((row, idx) => (
-                                <tr key={idx}>
-                                  <td>{row.label}</td>
-                                  <td style={{ textAlign: 'right' }}>{row.value}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-
-                      {sec1Segment === 'Área vinculada' && (
-                        <BarChart
-                          colors={cheerfulFiestaPalette}
-                          grid={{ horizontal: true }}
-                          xAxis={[{ 
-                            scaleType: 'band', 
-                            data: datasetsSec1['Área vinculada'].map(d => d.label), 
-                            tickLabelStyle: { fontSize: isMobile ? 8 : 10, fontWeight: 500 },
-                            valueFormatter: (value, context) => {
-                              if (isMobile && context?.location === 'tick' && value && value.length > 6) return value.substring(0, 4) + '...';
-                              return value;
-                            }
-                          }]}
-                          series={datasetsSec1['Área vinculada'].map((d, idx) => ({
-                            data: datasetsSec1['Área vinculada'].map((x, i) => i === idx ? x.value : null),
-                            label: d.label,
-                            stack: 'total',
-                            barLabel: 'value',
-                            barLabelPlacement: 'outside'
-                          }))}
-                          yAxis={[{ 
-                            max: getAxisMax(Math.max(...datasetsSec1['Área vinculada'].map(d => d.value), 0)), 
-                            width: 35,
-                            domainLimit: 'strict',
-                            tickInterval: getAxisTicks(Math.max(...datasetsSec1['Área vinculada'].map(d => d.value), 0))
-                          }]}
-                          height={250}
-                          margin={{ top: 30, right: 10, bottom: 65, left: 40 }}
-                          slotProps={{ legend: { direction: 'row', position: { vertical: 'bottom', horizontal: 'middle' }, labelStyle: { fontSize: '10px' } } }}
-                        />
-                      )}
-                    </Box>
-                  </Grid>
-                </Grid>
-              )}
-            </div>
-          )}
-        </div>
+                {sec1Segment === 'Área vinculada' && renderDataOrPlaceholder(
+                  datasetsSec1['Área vinculada'].some(d => d.value > 0),
+                  <BarChart
+                    colors={cheerfulFiestaPalette}
+                    grid={{ horizontal: true }}
+                    xAxis={[{ 
+                      scaleType: 'band', 
+                      data: datasetsSec1['Área vinculada'].map(d => d.label), 
+                      tickLabelStyle: { fontSize: isMobile ? 8 : 10, fontWeight: 500 },
+                      valueFormatter: (value, context) => {
+                        if (isMobile && context?.location === 'tick' && value && value.length > 6) return value.substring(0, 4) + '...';
+                        return value;
+                      }
+                    }]}
+                    series={datasetsSec1['Área vinculada'].map((d, idx) => ({
+                      data: datasetsSec1['Área vinculada'].map((x, i) => i === idx ? x.value : null),
+                      label: d.label,
+                      stack: 'total',
+                      barLabel: 'value',
+                      barLabelPlacement: 'outside',
+                      valueFormatter: (value) => value === null ? null : String(value)
+                    }))}
+                    yAxis={[{ 
+                      max: getAxisMax(Math.max(...datasetsSec1['Área vinculada'].map(d => d.value), 0)), 
+                      width: 35,
+                      domainLimit: 'strict',
+                      tickInterval: getAxisTicks(Math.max(...datasetsSec1['Área vinculada'].map(d => d.value), 0))
+                    }]}
+                    height={250}
+                    margin={{ top: 30, right: 10, bottom: 65, left: 40 }}
+                    slotProps={{
+                      legend: { direction: 'horizontal', position: { vertical: 'bottom', horizontal: 'center' }, labelStyle: { fontSize: '10px' } },
+                      tooltip: { trigger: 'axis' }
+                    }}
+                  />,
+                  250
+                )}
+              </Box>
+            </Grid>
+          </Grid>
+        </DashboardSection>
 
         {/* ----------------- SECCIÓN 2: Nuevos convenios firmados ----------------- */}
-        <div className="collapsible-card" style={{ marginTop: '12px' }}>
-          <div className="collapsible-header" onClick={() => toggleSection('sec2')} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', padding: '16px 20px' }}>
-            <h2 style={{ fontFamily: "'Inter', sans-serif", fontSize: '18px', fontWeight: 600, color: '#1E2875', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <TrendingUp size={20} style={{ color: '#E27800' }} />
-              Nuevos convenios firmados
-            </h2>
-            <ChevronDown style={{ transform: sectionsOpen.sec2 ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 200ms', color: '#1E2875' }} size={18} />
-          </div>
-          {sectionsOpen.sec2 && (
-            <div className="collapsible-body" style={{ padding: '20px', borderTop: '1px solid #E0E0E0' }}>
-              {isNoData ? (
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 260, color: '#64748b', fontSize: '13px', fontWeight: 500, border: '1px dashed #E2E8F0', borderRadius: '12px', bgcolor: '#F8FAFC', width: '100%' }}>
-                  Sin datos disponibles
-                </Box>
-              ) : (
-                <Grid container spacing={3}>
+        <DashboardSection
+          title="Nuevos convenios firmados"
+          icon={<TrendingUp size={20} />}
+          iconColor="#E27800"
+          isOpen={sectionsOpen.sec2}
+          onToggle={() => toggleSection('sec2')}
+          hasData={!isNoData}
+          noDataHeight={260}
+        >
+          <Grid container spacing={3}>
                   {/* Distribución por año */}
                   <Grid item xs={12}>
-                    <Typography variant="subtitle2" sx={{ fontSize: '17px', fontWeight: 700, color: '#1E2875', mb: 1 }}>
-                      Distribución por año
-                    </Typography>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                      <Typography variant="subtitle2" sx={{ fontSize: '17px', fontWeight: 700, color: '#1E2875' }}>
+                        Distribución por año
+                      </Typography>
+                      <Button
+                        size="small"
+                        variant="text"
+                        onClick={() => handleOpenIndicator('total-convenios', null)}
+                        sx={{
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          color: '#1E2875',
+                          textTransform: 'none',
+                          py: 0.25,
+                          px: 1,
+                          borderRadius: '6px',
+                          '&:hover': { bgcolor: 'rgba(30, 40, 117, 0.08)' }
+                        }}
+                      >
+                        Ver detalles
+                      </Button>
+                    </Box>
                     <Box sx={{ minHeight: 260, pb: 2, width: '100%' }}>
                       {getFilteredYears(datasetsSec2['Año']).length > 0 ? (
                         <BarChart
@@ -1272,11 +862,11 @@ export const DashboardVcM = () => {
                           }]}
                           height={270}
                           margin={{ top: 30, right: 10, bottom: 65, left: 40 }}
-                          slotProps={{ legend: { direction: 'row', position: { vertical: 'bottom', horizontal: 'middle' }, labelStyle: { fontSize: '11px' } } }}
+                          slotProps={{ legend: { direction: 'horizontal', position: { vertical: 'bottom', horizontal: 'center' }, labelStyle: { fontSize: '11px' } } }}
                         />
                       ) : (
-                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#9E9E9E' }}>
-                          No hay datos en el rango seleccionado
+                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 260, color: '#64748b', fontSize: '13px', fontWeight: 500, border: '1px dashed #E2E8F0', borderRadius: '12px', bgcolor: '#F8FAFC', width: '100%' }}>
+                          Sin datos disponibles
                         </Box>
                       )}
                     </Box>
@@ -1288,10 +878,29 @@ export const DashboardVcM = () => {
 
                   {/* Nuevos convenios por categoría */}
                   <Grid item xs={12}>
-                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', mb: 2, gap: 1 }}>
-                      <Typography variant="subtitle2" sx={{ fontSize: '17px', fontWeight: 700, color: '#1E2875' }}>
-                        Nuevos convenios por categoría
-                      </Typography>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mb: 2 }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Typography variant="subtitle2" sx={{ fontSize: '17px', fontWeight: 700, color: '#1E2875' }}>
+                          Nuevos convenios por categoría
+                        </Typography>
+                        <Button
+                          size="small"
+                          variant="text"
+                          onClick={() => handleOpenIndicator('total-convenios', SEC2_GROUP_BY_MAP[sec2Segment])}
+                          sx={{
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            color: '#1E2875',
+                            textTransform: 'none',
+                            py: 0.25,
+                            px: 1,
+                            borderRadius: '6px',
+                            '&:hover': { bgcolor: 'rgba(30, 40, 117, 0.08)' }
+                          }}
+                        >
+                          Ver detalles
+                        </Button>
+                      </Box>
                       
                       <ToggleButtonGroup
                         value={sec2Segment}
@@ -1308,7 +917,8 @@ export const DashboardVcM = () => {
                     </Box>
 
                     <Box sx={{ minHeight: 260, pb: 2 }}>
-                      {sec2Segment === 'Sector' && (
+                      {sec2Segment === 'Sector' && renderDataOrPlaceholder(
+                        datasetsSec2.Sector.some(d => d.value > 0),
                         <BarChart
                           colors={cheerfulFiestaPalette}
                           grid={{ horizontal: true }}
@@ -1326,7 +936,8 @@ export const DashboardVcM = () => {
                             label: d.label,
                             stack: 'total',
                             barLabel: 'value',
-                            barLabelPlacement: 'outside'
+                            barLabelPlacement: 'outside',
+                            valueFormatter: (value) => value === null ? null : String(value)
                           }))}
                           yAxis={[{ 
                             max: getAxisMax(Math.max(...datasetsSec2.Sector.map(d => d.value), 0)), 
@@ -1336,11 +947,16 @@ export const DashboardVcM = () => {
                           }]}
                           height={250}
                           margin={{ top: 30, right: 10, bottom: 65, left: 40 }}
-                          slotProps={{ legend: { direction: 'row', position: { vertical: 'bottom', horizontal: 'middle' }, labelStyle: { fontSize: '10px' } } }}
-                        />
+                          slotProps={{
+                            legend: { direction: 'horizontal', position: { vertical: 'bottom', horizontal: 'center' }, labelStyle: { fontSize: '10px' } },
+                            tooltip: { trigger: 'axis' }
+                          }}
+                        />,
+                        250
                       )}
 
-                      {sec2Segment === 'Tipo' && (
+                      {sec2Segment === 'Tipo' && renderDataOrPlaceholder(
+                        datasetsSec2.Tipo.some(d => d.value > 0),
                         <BarChart
                           colors={cheerfulFiestaPalette}
                           grid={{ horizontal: true }}
@@ -1358,7 +974,8 @@ export const DashboardVcM = () => {
                             label: d.label,
                             stack: 'total',
                             barLabel: 'value',
-                            barLabelPlacement: 'outside'
+                            barLabelPlacement: 'outside',
+                            valueFormatter: (value) => value === null ? null : String(value)
                           }))}
                           yAxis={[{ 
                             max: getAxisMax(Math.max(...datasetsSec2.Tipo.map(d => d.value), 0)), 
@@ -1368,11 +985,16 @@ export const DashboardVcM = () => {
                           }]}
                           height={250}
                           margin={{ top: 30, right: 10, bottom: 65, left: 40 }}
-                          slotProps={{ legend: { direction: 'row', position: { vertical: 'bottom', horizontal: 'middle' }, labelStyle: { fontSize: '10px' } } }}
-                        />
+                          slotProps={{
+                            legend: { direction: 'horizontal', position: { vertical: 'bottom', horizontal: 'center' }, labelStyle: { fontSize: '10px' } },
+                            tooltip: { trigger: 'axis' }
+                          }}
+                        />,
+                        250
                       )}
 
-                      {sec2Segment === 'Responsable' && (
+                      {sec2Segment === 'Responsable' && renderDataOrPlaceholder(
+                        datasetsSec2.Responsable.some(d => d.value > 0),
                         <BarChart
                           colors={cheerfulFiestaPalette}
                           grid={{ horizontal: true }}
@@ -1390,7 +1012,8 @@ export const DashboardVcM = () => {
                             label: d.label,
                             stack: 'total',
                             barLabel: 'value',
-                            barLabelPlacement: 'outside'
+                            barLabelPlacement: 'outside',
+                            valueFormatter: (value) => value === null ? null : String(value)
                           }))}
                           yAxis={[{ 
                             max: getAxisMax(Math.max(...datasetsSec2.Responsable.map(d => d.value), 0)), 
@@ -1400,132 +1023,154 @@ export const DashboardVcM = () => {
                           }]}
                           height={250}
                           margin={{ top: 30, right: 10, bottom: 65, left: 40 }}
-                          slotProps={{ legend: { direction: 'row', position: { vertical: 'bottom', horizontal: 'middle' }, labelStyle: { fontSize: '10px' } } }}
-                        />
+                          slotProps={{
+                            legend: { direction: 'horizontal', position: { vertical: 'bottom', horizontal: 'center' }, labelStyle: { fontSize: '10px' } },
+                            tooltip: { trigger: 'axis' }
+                          }}
+                        />,
+                        250
                       )}
                     </Box>
                   </Grid>
                 </Grid>
-              )}
-            </div>
-          )}
-        </div>
+        </DashboardSection>
 
         {/* ----------------- SECCIÓN 3: Convenios por sector ----------------- */}
-        <div className="collapsible-card" style={{ marginTop: '12px' }}>
-          <div className="collapsible-header" onClick={() => toggleSection('sec3')} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', padding: '16px 20px' }}>
-            <h2 style={{ fontFamily: "'Inter', sans-serif", fontSize: '18px', fontWeight: 600, color: '#1E2875', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <Layers size={20} style={{ color: '#E27800' }} />
-              Convenios por sector
-            </h2>
-            <ChevronDown style={{ transform: sectionsOpen.sec3 ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 200ms', color: '#1E2875' }} size={18} />
-          </div>
-          {sectionsOpen.sec3 && (
-            <div className="collapsible-body" style={{ padding: '20px', borderTop: '1px solid #E0E0E0' }}>
-              {isNoData ? (
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 260, color: '#64748b', fontSize: '13px', fontWeight: 500, border: '1px dashed #E2E8F0', borderRadius: '12px', bgcolor: '#F8FAFC', width: '100%' }}>
-                  Sin datos disponibles
-                </Box>
-              ) : (
-                <Grid container spacing={3} alignItems="center">
-                  {/* Donut Chart */}
-                  <Grid item xs={12} md={6}>
-                    <Box sx={{ height: 260, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-                      <PieChart
-                        colors={cheerfulFiestaPalette}
-                        series={[{
-                          data: datasetsSec3.filter(d => d.vigentes > 0).map((d, i) => ({ id: i, value: d.vigentes, label: d.label })),
-                          innerRadius: 50,
-                          outerRadius: 90,
-                          paddingAngle: 2,
-                          cornerRadius: 4,
-                        }]}
-                        height={250}
-                        margin={{ top: 10, bottom: 50, left: 10, right: 10 }}
-                        slotProps={{ legend: { direction: 'row', position: { vertical: 'bottom', horizontal: 'middle' }, labelStyle: { fontSize: '11px' } } }}
-                      />
+        <DashboardSection
+          title="Convenios por sector"
+          icon={<Layers size={20} />}
+          iconColor="#E27800"
+          isOpen={sectionsOpen.sec3}
+          onToggle={() => toggleSection('sec3')}
+          hasData={!isNoData}
+          noDataHeight={260}
+        >
+          <Grid container spacing={3} alignItems="center">
+            <Grid item xs={12}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Typography variant="subtitle2" sx={{ fontSize: '17px', fontWeight: 700, color: '#1E2875' }}>
+                  Convenios por sector
+                </Typography>
+                <Button
+                  size="small"
+                  variant="text"
+                  onClick={() => handleOpenIndicator('convenios-sector')}
+                  sx={{
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    color: '#1E2875',
+                    textTransform: 'none',
+                    py: 0.25,
+                    px: 1,
+                    borderRadius: '6px',
+                    '&:hover': { bgcolor: 'rgba(30, 40, 117, 0.08)' }
+                  }}
+                >
+                  Ver detalles
+                </Button>
+              </Box>
+            </Grid>
+            {/* Donut Chart */}
+            <Grid item xs={12} md={6}>
+              <Box sx={{ minHeight: 270, pb: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+                {renderDataOrPlaceholder(
+                  datasetsSec3.some(d => d.vigentes > 0),
+                  <PieChart
+                    colors={cheerfulFiestaPalette}
+                    series={[{
+                      data: datasetsSec3.filter(d => d.vigentes > 0).map((d, i) => ({ id: i, value: d.vigentes, label: d.label })),
+                      innerRadius: 50,
+                      outerRadius: 90,
+                      paddingAngle: 2,
+                      cornerRadius: 4,
+                    }]}
+                    height={270}
+                    margin={{ top: 10, bottom: 65, left: 10, right: 10 }}
+                    slotProps={{ 
+                      legend: { 
+                        direction: 'horizontal', 
+                        position: { vertical: 'bottom', horizontal: 'center' },
+                        labelStyle: { fontSize: '11px', fontWeight: 500 }
+                      } 
+                    }}
+                  >
+                    <PieCenterLabel
+                      primary={datasetsSec3.reduce((sum, d) => sum + (d.vigentes || 0), 0)}
+                      secondary="Vigentes"
+                    />
+                  </PieChart>,
+                  270
+                )}
+              </Box>
+            </Grid>
 
-                      {/* Texto en el centro del Donut */}
-                      <Box sx={{ 
-                        position: 'absolute', 
-                        display: 'flex', 
-                        flexDirection: 'column', 
-                        alignItems: 'center', 
-                        justifyContent: 'center',
-                        pointerEvents: 'none',
-                        transform: 'translateY(-20px)'
-                      }}>
-                        <Typography sx={{ fontSize: '24px', fontWeight: 800, color: '#1E2875', lineHeight: 1 }}>
-                          {datasetsSec3.reduce((sum, d) => sum + (d.vigentes || 0), 0)}
-                        </Typography>
-                        <Typography sx={{ fontSize: '10px', fontWeight: 600, color: '#64748b', mt: 0.5, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                          Vigentes
-                        </Typography>
-                      </Box>
-                    </Box>
-                  </Grid>
-
-                  {/* Tabla de detalle */}
-                  <Grid item xs={12} md={6} sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-                    <div style={{ maxHeight: 240, overflowY: 'auto', border: '1px solid #E0E0E0', borderRadius: 4, width: '100%' }}>
-                      <table className="vcm-table">
-                        <thead>
-                          <tr style={{ background: '#F8FAFC' }}>
-                            <th style={{ padding: '10px', fontWeight: 600, borderBottom: '2px solid #E0E0E0' }}>
-                              Sector
-                            </th>
-                            <th style={{ padding: '10px', fontWeight: 600, borderBottom: '2px solid #E0E0E0', textAlign: 'right' }}>
-                              Vigentes
-                            </th>
-                            <th style={{ padding: '10px', fontWeight: 600, borderBottom: '2px solid #E0E0E0', textAlign: 'right' }}>
-                              Cerrados
-                            </th>
-                            <th style={{ padding: '10px', fontWeight: 600, borderBottom: '2px solid #E0E0E0', textAlign: 'right' }}>
-                              Total
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {datasetsSec3.map((row, idx) => (
-                            <tr key={idx}>
-                              <td style={{ fontWeight: 600 }}>{row.label}</td>
-                              <td style={{ textAlign: 'right', color: '#E27800', fontWeight: 600 }}>{row.vigentes}</td>
-                              <td style={{ textAlign: 'right', color: '#6B7280' }}>{row.cerrados}</td>
-                              <td style={{ textAlign: 'right', fontWeight: 600 }}>{row.total}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </Grid>
-                </Grid>
+            {/* Data Table */}
+            <Grid item xs={12} md={6} sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+              {renderDataOrPlaceholder(
+                datasetsSec3.some(d => (d.vigentes > 0 || d.cerrados > 0 || d.total > 0)),
+                <div style={{ maxHeight: 240, overflowY: 'auto', border: '1px solid #E0E0E0', borderRadius: 4, width: '100%' }}>
+                  <table className="vcm-table">
+                    <thead>
+                      <tr>
+                        <th>Sector</th>
+                        <th style={{ textAlign: 'right', color: '#E27800' }}>Vigentes</th>
+                        <th style={{ textAlign: 'right', color: '#6B7280' }}>Cerrados</th>
+                        <th style={{ textAlign: 'right' }}>Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {datasetsSec3.map((row, idx) => (
+                        <tr key={idx}>
+                          <td style={{ fontWeight: 600 }}>{row.label}</td>
+                          <td style={{ textAlign: 'right', color: '#E27800', fontWeight: 600 }}>{row.vigentes}</td>
+                          <td style={{ textAlign: 'right', color: '#6B7280' }}>{row.cerrados}</td>
+                          <td style={{ textAlign: 'right', fontWeight: 600 }}>{row.total}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>,
+                240
               )}
-            </div>
-          )}
-        </div>
+            </Grid>
+          </Grid>
+        </DashboardSection>
 
         {/* ----------------- SECCIÓN 4: Actividades VcM ----------------- */}
-        <div className="collapsible-card" style={{ marginTop: '12px' }}>
-          <div className="collapsible-header" onClick={() => toggleSection('sec4')} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', padding: '16px 20px' }}>
-            <h2 style={{ fontFamily: "'Inter', sans-serif", fontSize: '18px', fontWeight: 600, color: '#1E2875', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <CalendarLucide size={20} style={{ color: '#E27800' }} />
-              Actividades VcM
-            </h2>
-            <ChevronDown style={{ transform: sectionsOpen.sec4 ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 200ms', color: '#1E2875' }} size={18} />
-          </div>
-          {sectionsOpen.sec4 && (
-            <div className="collapsible-body" style={{ padding: '20px', borderTop: '1px solid #E0E0E0' }}>
-              {isNoData ? (
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 260, color: '#64748b', fontSize: '13px', fontWeight: 500, border: '1px dashed #E2E8F0', borderRadius: '12px', bgcolor: '#F8FAFC', width: '100%' }}>
-                  Sin datos disponibles
-                </Box>
-              ) : (
-                <Grid container spacing={3}>
+        <DashboardSection
+          title="Actividades VcM"
+          icon={<CalendarLucide size={20} />}
+          iconColor="#E27800"
+          isOpen={sectionsOpen.sec4}
+          onToggle={() => toggleSection('sec4')}
+          hasData={!isNoData}
+          noDataHeight={260}
+        >
+          <Grid container spacing={3}>
                   {/* Distribución por año */}
                   <Grid item xs={12}>
-                    <Typography variant="subtitle2" sx={{ fontSize: '17px', fontWeight: 700, color: '#1E2875', mb: 1 }}>
-                      Distribución por año
-                    </Typography>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                      <Typography variant="subtitle2" sx={{ fontSize: '17px', fontWeight: 700, color: '#1E2875' }}>
+                        Distribución por año
+                      </Typography>
+                      <Button
+                        size="small"
+                        variant="text"
+                        onClick={() => handleOpenIndicator('actividades-realizadas', null)}
+                        sx={{
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          color: '#1E2875',
+                          textTransform: 'none',
+                          py: 0.25,
+                          px: 1,
+                          borderRadius: '6px',
+                          '&:hover': { bgcolor: 'rgba(30, 40, 117, 0.08)' }
+                        }}
+                      >
+                        Ver detalles
+                      </Button>
+                    </Box>
                     <Box sx={{ minHeight: 260, pb: 2, width: '100%' }}>
                       {getFilteredYears(datasetsSec4['Año']).length > 0 ? (
                         <LineChart
@@ -1545,11 +1190,11 @@ export const DashboardVcM = () => {
                           }]}
                           height={270}
                           margin={{ top: 30, right: 10, bottom: 65, left: 40 }}
-                          slotProps={{ legend: { direction: 'row', position: { vertical: 'bottom', horizontal: 'middle' }, labelStyle: { fontSize: '11px' } } }}
+                          slotProps={{ legend: { direction: 'horizontal', position: { vertical: 'bottom', horizontal: 'center' }, labelStyle: { fontSize: '11px' } } }}
                         />
                       ) : (
-                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#9E9E9E' }}>
-                          No hay datos en el rango seleccionado
+                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 260, color: '#64748b', fontSize: '13px', fontWeight: 500, border: '1px dashed #E2E8F0', borderRadius: '12px', bgcolor: '#F8FAFC', width: '100%' }}>
+                          Sin datos disponibles
                         </Box>
                       )}
                     </Box>
@@ -1561,10 +1206,29 @@ export const DashboardVcM = () => {
 
                   {/* Actividades por categoría */}
                   <Grid item xs={12}>
-                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', mb: 2, gap: 1 }}>
-                      <Typography variant="subtitle2" sx={{ fontSize: '17px', fontWeight: 700, color: '#1E2875' }}>
-                        Actividades por categoría
-                      </Typography>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mb: 2 }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Typography variant="subtitle2" sx={{ fontSize: '17px', fontWeight: 700, color: '#1E2875' }}>
+                          Actividades por categoría
+                        </Typography>
+                        <Button
+                          size="small"
+                          variant="text"
+                          onClick={() => handleOpenIndicator('actividades-realizadas', SEC4_GROUP_BY_MAP[sec4Segment])}
+                          sx={{
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            color: '#1E2875',
+                            textTransform: 'none',
+                            py: 0.25,
+                            px: 1,
+                            borderRadius: '6px',
+                            '&:hover': { bgcolor: 'rgba(30, 40, 117, 0.08)' }
+                          }}
+                        >
+                          Ver detalles
+                        </Button>
+                      </Box>
                       
                       <ToggleButtonGroup
                         value={sec4Segment}
@@ -1581,7 +1245,8 @@ export const DashboardVcM = () => {
                     </Box>
 
                     <Box sx={{ minHeight: 260 }}>
-                      {sec4Segment === 'Línea VcM' && (
+                      {sec4Segment === 'Línea VcM' && renderDataOrPlaceholder(
+                        datasetsSec4['Línea VcM'].some(d => d.value > 0),
                         <BarChart
                           colors={cheerfulFiestaPalette}
                           grid={{ horizontal: false, vertical: false }}
@@ -1603,16 +1268,22 @@ export const DashboardVcM = () => {
                             label: d.label,
                             stack: 'total',
                             barLabel: 'value',
-                            barLabelPlacement: 'outside'
+                            barLabelPlacement: 'outside',
+                            valueFormatter: (value) => value === null ? null : String(value)
                           }))}
                           layout="horizontal"
                           height={270}
                           margin={{ top: 10, right: 50, bottom: 70, left: isMobile ? 65 : 130 }}
-                          slotProps={{ legend: { direction: 'row', position: { vertical: 'bottom', horizontal: 'middle' }, labelStyle: { fontSize: '10px' } } }}
-                        />
+                          slotProps={{
+                            legend: { direction: 'horizontal', position: { vertical: 'bottom', horizontal: 'center' }, labelStyle: { fontSize: '10px' } },
+                            tooltip: { trigger: 'axis' }
+                          }}
+                        />,
+                        270
                       )}
 
-                      {sec4Segment === 'Modalidad' && (
+                      {sec4Segment === 'Modalidad' && renderDataOrPlaceholder(
+                        datasetsSec4.Modalidad.some(d => d.value > 0),
                         <BarChart
                           colors={cheerfulFiestaPalette}
                           grid={{ horizontal: false, vertical: false }}
@@ -1634,16 +1305,22 @@ export const DashboardVcM = () => {
                             label: d.label,
                             stack: 'total',
                             barLabel: 'value',
-                            barLabelPlacement: 'outside'
+                            barLabelPlacement: 'outside',
+                            valueFormatter: (value) => value === null ? null : String(value)
                           }))}
                           layout="horizontal"
                           height={270}
                           margin={{ top: 10, right: 50, bottom: 70, left: isMobile ? 65 : 120 }}
-                          slotProps={{ legend: { direction: 'row', position: { vertical: 'bottom', horizontal: 'middle' }, labelStyle: { fontSize: '10px' } } }}
-                        />
+                          slotProps={{
+                            legend: { direction: 'horizontal', position: { vertical: 'bottom', horizontal: 'center' }, labelStyle: { fontSize: '10px' } },
+                            tooltip: { trigger: 'axis' }
+                          }}
+                        />,
+                        270
                       )}
 
-                      {sec4Segment === 'Tipo de Actividad' && (
+                      {sec4Segment === 'Tipo de Actividad' && renderDataOrPlaceholder(
+                        datasetsSec4['Tipo de Actividad'].some(d => d.months?.some(m => m > 0)),
                         <div style={{ overflowX: 'auto', border: '1px solid #E0E0E0', borderRadius: 4, padding: '12px' }}>
                           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                             <thead>
@@ -1695,10 +1372,12 @@ export const DashboardVcM = () => {
                               ))}
                             </tbody>
                           </table>
-                        </div>
+                        </div>,
+                        260
                       )}
 
-                      {sec4Segment === 'Comuna' && (
+                      {sec4Segment === 'Comuna' && renderDataOrPlaceholder(
+                        datasetsSec4.Comuna?.some(d => d.value > 0),
                         <div style={{ maxHeight: 240, overflowY: 'auto', border: '1px solid #E0E0E0', borderRadius: 4, width: '100%' }}>
                           <table className="vcm-table">
                             <thead>
@@ -1707,7 +1386,7 @@ export const DashboardVcM = () => {
                                   Comuna {sortStates.sec4.key === 'label' ? (sortStates.sec4.asc ? ' ▲' : ' ▼') : ''}
                                 </th>
                                 <th className="sortable-th" style={{ textAlign: 'right' }} onClick={() => handleSort('sec4', 'value')}>
-                                  Cantidad {sortStates.sec4.key === 'value' ? (sortStates.sec4.asc ? ' ▲' : ' ▼') : ''}
+                                  Actividades {sortStates.sec4.key === 'value' ? (sortStates.sec4.asc ? ' ▲' : ' ▼') : ''}
                                 </th>
                               </tr>
                             </thead>
@@ -1720,38 +1399,50 @@ export const DashboardVcM = () => {
                               ))}
                             </tbody>
                           </table>
-                        </div>
+                        </div>,
+                        240
                       )}
                     </Box>
                   </Grid>
                 </Grid>
-              )}
-            </div>
-          )}
-        </div>
+        </DashboardSection>
 
         {/* ----------------- SECCIÓN 5: Participantes en actividades VcM ----------------- */}
-        <div className="collapsible-card" style={{ marginTop: '12px' }}>
-          <div className="collapsible-header" onClick={() => toggleSection('sec5')} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', padding: '16px 20px' }}>
-            <h2 style={{ fontFamily: "'Inter', sans-serif", fontSize: '18px', fontWeight: 600, color: '#1E2875', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <Users size={20} style={{ color: '#E27800' }} />
-              Participantes en actividades VcM
-            </h2>
-            <ChevronDown style={{ transform: sectionsOpen.sec5 ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 200ms', color: '#1E2875' }} size={18} />
-          </div>
-          {sectionsOpen.sec5 && (
-            <div className="collapsible-body" style={{ padding: '20px', paddingBottom: '35px', borderTop: '1px solid #E0E0E0' }}>
-              {isNoData ? (
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 260, color: '#64748b', fontSize: '13px', fontWeight: 500, border: '1px dashed #E2E8F0', borderRadius: '12px', bgcolor: '#F8FAFC', width: '100%' }}>
-                  Sin datos disponibles
-                </Box>
-              ) : (
-                <Grid container spacing={3}>
+        <DashboardSection
+          title="Participantes en actividades VcM"
+          icon={<Users size={20} />}
+          iconColor="#E27800"
+          isOpen={sectionsOpen.sec5}
+          onToggle={() => toggleSection('sec5')}
+          hasData={!isNoData}
+          noDataHeight={260}
+          bodySx={{ pb: '35px' }}
+        >
+          <Grid container spacing={3}>
                   {/* Distribución por año */}
                   <Grid item xs={12}>
-                    <Typography variant="subtitle2" sx={{ fontSize: '17px', fontWeight: 700, color: '#1E2875', mb: 1 }}>
-                      Distribución por año (Interno vs Externo)
-                    </Typography>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                      <Typography variant="subtitle2" sx={{ fontSize: '17px', fontWeight: 700, color: '#1E2875' }}>
+                        Distribución por año (Interno vs Externo)
+                      </Typography>
+                      <Button
+                        size="small"
+                        variant="text"
+                        onClick={() => handleOpenIndicator('participaciones', null)}
+                        sx={{
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          color: '#1E2875',
+                          textTransform: 'none',
+                          py: 0.25,
+                          px: 1,
+                          borderRadius: '6px',
+                          '&:hover': { bgcolor: 'rgba(30, 40, 117, 0.08)' }
+                        }}
+                      >
+                        Ver detalles
+                      </Button>
+                    </Box>
                     <Box sx={{ minHeight: 260, pb: 2, width: '100%' }}>
                       {getFilteredYears(datasetsSec5['Año']).length > 0 ? (
                         <BarChart
@@ -1770,11 +1461,11 @@ export const DashboardVcM = () => {
                           }]}
                           height={270}
                           margin={{ top: 30, right: 10, bottom: 65, left: 55 }}
-                          slotProps={{ legend: { direction: 'row', position: { vertical: 'bottom', horizontal: 'middle' }, labelStyle: { fontSize: '11px' } } }}
+                          slotProps={{ legend: { direction: 'horizontal', position: { vertical: 'bottom', horizontal: 'center' }, labelStyle: { fontSize: '11px' } } }}
                         />
                       ) : (
-                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#9E9E9E' }}>
-                          No hay datos en el rango seleccionado
+                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 260, color: '#64748b', fontSize: '13px', fontWeight: 500, border: '1px dashed #E2E8F0', borderRadius: '12px', bgcolor: '#F8FAFC', width: '100%' }}>
+                          Sin datos disponibles
                         </Box>
                       )}
                     </Box>
@@ -1786,10 +1477,29 @@ export const DashboardVcM = () => {
 
                   {/* Participantes por categoría */}
                   <Grid item xs={12}>
-                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', mb: 2, gap: 1 }}>
-                      <Typography variant="subtitle2" sx={{ fontSize: '17px', fontWeight: 700, color: '#1E2875' }}>
-                        Participantes por categoría
-                      </Typography>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mb: 2 }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Typography variant="subtitle2" sx={{ fontSize: '17px', fontWeight: 700, color: '#1E2875' }}>
+                          Participantes por categoría
+                        </Typography>
+                        <Button
+                          size="small"
+                          variant="text"
+                          onClick={() => handleOpenIndicator('participaciones', SEC5_GROUP_BY_MAP[sec5Segment])}
+                          sx={{
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            color: '#1E2875',
+                            textTransform: 'none',
+                            py: 0.25,
+                            px: 1,
+                            borderRadius: '6px',
+                            '&:hover': { bgcolor: 'rgba(30, 40, 117, 0.08)' }
+                          }}
+                        >
+                          Ver detalles
+                        </Button>
+                      </Box>
                       
                       <ToggleButtonGroup
                         value={sec5Segment}
@@ -1806,7 +1516,8 @@ export const DashboardVcM = () => {
                     </Box>
 
                     <Box sx={{ minHeight: 260, pb: 2 }}>
-                      {sec5Segment === 'Público objetivo' && (
+                      {sec5Segment === 'Público objetivo' && renderDataOrPlaceholder(
+                        datasetsSec5['Público objetivo']?.some(d => d.value > 0),
                         <BarChart
                           colors={cheerfulFiestaPalette}
                           grid={{ horizontal: false, vertical: false }}
@@ -1828,17 +1539,22 @@ export const DashboardVcM = () => {
                             label: d.label,
                             stack: 'total',
                             barLabel: 'value',
-                            barLabelPlacement: 'outside'
+                            barLabelPlacement: 'outside',
+                            valueFormatter: (value) => value === null ? null : String(value)
                           }))}
                           layout="horizontal"
                           height={380}
                           margin={{ top: 10, right: 50, bottom: 70, left: isMobile ? 65 : 130 }}
-                          slotProps={{ legend: { direction: 'row', position: { vertical: 'bottom', horizontal: 'middle' }, labelStyle: { fontSize: '10px' } } }}
-                        />
+                          slotProps={{
+                            legend: { direction: 'horizontal', position: { vertical: 'bottom', horizontal: 'center' }, labelStyle: { fontSize: '10px' } },
+                            tooltip: { trigger: 'axis' }
+                          }}
+                        />,
+                        380
                       )}
-
-                      {sec5Segment === 'Sexo' && (
-                        <Box sx={{ height: 260, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+                      {sec5Segment === 'Sexo' && renderDataOrPlaceholder(
+                        datasetsSec5.Sexo?.some(d => d.value > 0),
+                        <Box sx={{ minHeight: 270, pb: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
                           <PieChart
                             colors={cheerfulFiestaPalette}
                             series={[{
@@ -1848,31 +1564,21 @@ export const DashboardVcM = () => {
                               paddingAngle: 2,
                               cornerRadius: 4,
                             }]}
-                            height={240}
-                            slotProps={{ legend: { direction: 'row', position: { vertical: 'bottom', horizontal: 'middle' }, labelStyle: { fontSize: '11px' } } }}
-                          />
-                          <Box sx={{ 
-                            position: 'absolute', 
-                            top: '50%', 
-                            left: '50%', 
-                            transform: 'translate(-50%, -50%) translateY(-10px)', 
-                            display: 'flex', 
-                            flexDirection: 'column', 
-                            alignItems: 'center', 
-                            justifyContent: 'center',
-                            pointerEvents: 'none'
-                          }}>
-                            <Typography sx={{ fontSize: '22px', fontWeight: 800, color: '#1E2875', lineHeight: 1 }}>
-                              {datasetsSec5.Sexo.reduce((sum, d) => sum + (d.value || 0), 0)}
-                            </Typography>
-                            <Typography sx={{ fontSize: '9px', fontWeight: 600, color: '#64748b', mt: 0.5, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                              TOTAL
-                            </Typography>
-                          </Box>
-                        </Box>
+                            height={270}
+                            margin={{ top: 10, bottom: 65, left: 10, right: 10 }}
+                            slotProps={{ legend: { direction: 'horizontal', position: { vertical: 'bottom', horizontal: 'center' }, labelStyle: { fontSize: '11px' } } }}
+                          >
+                            <PieCenterLabel
+                              primary={datasetsSec5.Sexo.reduce((sum, d) => sum + (d.value || 0), 0)}
+                              secondary="TOTAL"
+                            />
+                          </PieChart>
+                        </Box>,
+                        270
                       )}
 
-                      {sec5Segment === 'Institución' && (
+                      {sec5Segment === 'Institución' && renderDataOrPlaceholder(
+                        datasetsSec5['Institución']?.some(d => d.value > 0),
                         <div style={{ maxHeight: 240, overflowY: 'auto', border: '1px solid #E0E0E0', borderRadius: 4, width: '100%' }}>
                           <table className="vcm-table">
                             <thead>
@@ -1894,10 +1600,12 @@ export const DashboardVcM = () => {
                               ))}
                             </tbody>
                           </table>
-                        </div>
+                        </div>,
+                        240
                       )}
 
-                      {sec5Segment === 'Comuna' && (
+                      {sec5Segment === 'Comuna' && renderDataOrPlaceholder(
+                        datasetsSec5.Comuna?.some(d => d.value > 0),
                         <div style={{ maxHeight: 240, overflowY: 'auto', border: '1px solid #E0E0E0', borderRadius: 4, width: '100%' }}>
                           <table className="vcm-table">
                             <thead>
@@ -1919,38 +1627,49 @@ export const DashboardVcM = () => {
                               ))}
                             </tbody>
                           </table>
-                        </div>
+                        </div>,
+                        240
                       )}
                     </Box>
                   </Grid>
                 </Grid>
-              )}
-            </div>
-          )}
-        </div>
+        </DashboardSection>
 
         {/* ----------------- SECCIÓN 6: Articulaciones TP ejecutadas ----------------- */}
-        <div className="collapsible-card" style={{ marginTop: '12px' }}>
-          <div className="collapsible-header" onClick={() => toggleSection('sec6')} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', padding: '16px 20px' }}>
-            <h2 style={{ fontFamily: "'Inter', sans-serif", fontSize: '18px', fontWeight: 600, color: '#1E2875', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <GraduationCap size={20} style={{ color: '#E27800' }} />
-              Articulaciones TP ejecutadas
-            </h2>
-            <ChevronDown style={{ transform: sectionsOpen.sec6 ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 200ms', color: '#1E2875' }} size={18} />
-          </div>
-          {sectionsOpen.sec6 && (
-            <div className="collapsible-body" style={{ padding: '20px', borderTop: '1px solid #E0E0E0' }}>
-              {isNoData ? (
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 260, color: '#64748b', fontSize: '13px', fontWeight: 500, border: '1px dashed #E2E8F0', borderRadius: '12px', bgcolor: '#F8FAFC', width: '100%' }}>
-                  Sin datos disponibles
-                </Box>
-              ) : (
-                <Grid container spacing={3}>
+        <DashboardSection
+          title="Articulaciones TP ejecutadas"
+          icon={<GraduationCap size={20} />}
+          iconColor="#E27800"
+          isOpen={sectionsOpen.sec6}
+          onToggle={() => toggleSection('sec6')}
+          hasData={!isNoData}
+          noDataHeight={260}
+        >
+          <Grid container spacing={3}>
                   {/* Distribución por año */}
                   <Grid item xs={12}>
-                    <Typography variant="subtitle2" sx={{ fontSize: '17px', fontWeight: 700, color: '#1E2875', mb: 1 }}>
-                      Distribución por año
-                    </Typography>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                      <Typography variant="subtitle2" sx={{ fontSize: '17px', fontWeight: 700, color: '#1E2875' }}>
+                        Distribución por año
+                      </Typography>
+                      <Button
+                        size="small"
+                        variant="text"
+                        onClick={() => handleOpenIndicator('articulaciones-tp', null)}
+                        sx={{
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          color: '#1E2875',
+                          textTransform: 'none',
+                          py: 0.25,
+                          px: 1,
+                          borderRadius: '6px',
+                          '&:hover': { bgcolor: 'rgba(30, 40, 117, 0.08)' }
+                        }}
+                      >
+                        Ver detalles
+                      </Button>
+                    </Box>
                     <Box sx={{ minHeight: 260, pb: 2, width: '100%' }}>
                       {getFilteredYears(datasetsSec6['Año']).length > 0 ? (
                         <LineChart
@@ -1970,11 +1689,11 @@ export const DashboardVcM = () => {
                           }]}
                           height={270}
                           margin={{ top: 30, right: 10, bottom: 65, left: 40 }}
-                          slotProps={{ legend: { direction: 'row', position: { vertical: 'bottom', horizontal: 'middle' }, labelStyle: { fontSize: '11px' } } }}
+                          slotProps={{ legend: { direction: 'horizontal', position: { vertical: 'bottom', horizontal: 'center' }, labelStyle: { fontSize: '11px' } } }}
                         />
                       ) : (
-                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#9E9E9E' }}>
-                          No hay datos en el rango seleccionado
+                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 260, color: '#64748b', fontSize: '13px', fontWeight: 500, border: '1px dashed #E2E8F0', borderRadius: '12px', bgcolor: '#F8FAFC', width: '100%' }}>
+                          Sin datos disponibles
                         </Box>
                       )}
                     </Box>
@@ -1986,10 +1705,29 @@ export const DashboardVcM = () => {
 
                   {/* Articulaciones por categoría */}
                   <Grid item xs={12}>
-                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', mb: 2, gap: 1 }}>
-                      <Typography variant="subtitle2" sx={{ fontSize: '17px', fontWeight: 700, color: '#1E2875' }}>
-                        Articulaciones por categoría
-                      </Typography>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mb: 2 }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Typography variant="subtitle2" sx={{ fontSize: '17px', fontWeight: 700, color: '#1E2875' }}>
+                          Articulaciones por categoría
+                        </Typography>
+                        <Button
+                          size="small"
+                          variant="text"
+                          onClick={() => handleOpenIndicator('articulaciones-tp', SEC6_GROUP_BY_MAP[sec6Segment])}
+                          sx={{
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            color: '#1E2875',
+                            textTransform: 'none',
+                            py: 0.25,
+                            px: 1,
+                            borderRadius: '6px',
+                            '&:hover': { bgcolor: 'rgba(30, 40, 117, 0.08)' }
+                          }}
+                        >
+                          Ver detalles
+                        </Button>
+                      </Box>
                       
                       <ToggleButtonGroup
                         value={sec6Segment}
@@ -2006,7 +1744,8 @@ export const DashboardVcM = () => {
                     </Box>
 
                     <Box sx={{ minHeight: 260 }}>
-                      {sec6Segment === 'Plataforma' && (
+                      {sec6Segment === 'Plataforma' && renderDataOrPlaceholder(
+                        datasetsSec6.Plataforma?.some(d => d.value > 0),
                         <BarChart
                           colors={cheerfulFiestaPalette}
                           grid={{ horizontal: true }}
@@ -2024,7 +1763,8 @@ export const DashboardVcM = () => {
                             label: d.label,
                             stack: 'total',
                             barLabel: 'value',
-                            barLabelPlacement: 'outside'
+                            barLabelPlacement: 'outside',
+                            valueFormatter: (value) => value === null ? null : String(value)
                           }))}
                           yAxis={[{ 
                             max: getAxisMax(Math.max(...datasetsSec6.Plataforma.map(d => d.value), 0)), 
@@ -2034,11 +1774,16 @@ export const DashboardVcM = () => {
                           }]}
                           height={270}
                           margin={{ top: 30, right: 10, bottom: 75, left: 40 }}
-                          slotProps={{ legend: { direction: 'row', position: { vertical: 'bottom', horizontal: 'middle' }, labelStyle: { fontSize: '10px' } } }}
-                        />
+                          slotProps={{
+                            legend: { direction: 'horizontal', position: { vertical: 'bottom', horizontal: 'center' }, labelStyle: { fontSize: '10px' } },
+                            tooltip: { trigger: 'axis' }
+                          }}
+                        />,
+                        270
                       )}
 
-                      {sec6Segment === 'Tipo' && (
+                      {sec6Segment === 'Tipo' && renderDataOrPlaceholder(
+                        datasetsSec6.Tipo?.some(d => d.value > 0),
                         <BarChart
                           colors={cheerfulFiestaPalette}
                           grid={{ horizontal: true }}
@@ -2056,7 +1801,8 @@ export const DashboardVcM = () => {
                             label: d.label,
                             stack: 'total',
                             barLabel: 'value',
-                            barLabelPlacement: 'outside'
+                            barLabelPlacement: 'outside',
+                            valueFormatter: (value) => value === null ? null : String(value)
                           }))}
                           yAxis={[{ 
                             max: getAxisMax(Math.max(...datasetsSec6.Tipo.map(d => d.value), 0)), 
@@ -2066,11 +1812,16 @@ export const DashboardVcM = () => {
                           }]}
                           height={270}
                           margin={{ top: 30, right: 10, bottom: 75, left: 40 }}
-                          slotProps={{ legend: { direction: 'row', position: { vertical: 'bottom', horizontal: 'middle' }, labelStyle: { fontSize: '10px' } } }}
-                        />
+                          slotProps={{
+                            legend: { direction: 'horizontal', position: { vertical: 'bottom', horizontal: 'center' }, labelStyle: { fontSize: '10px' } },
+                            tooltip: { trigger: 'axis' }
+                          }}
+                        />,
+                        270
                       )}
 
-                      {sec6Segment === 'Especialidad' && (
+                      {sec6Segment === 'Especialidad' && renderDataOrPlaceholder(
+                        datasetsSec6.Especialidad?.some(d => d.value > 0),
                         <div style={{ maxHeight: 240, overflowY: 'auto', border: '1px solid #E0E0E0', borderRadius: 4, width: '100%' }}>
                           <table className="vcm-table">
                             <thead>
@@ -2092,10 +1843,12 @@ export const DashboardVcM = () => {
                               ))}
                             </tbody>
                           </table>
-                        </div>
+                        </div>,
+                        240
                       )}
 
-                      {sec6Segment === 'Colegio' && (
+                      {sec6Segment === 'Colegio' && renderDataOrPlaceholder(
+                        datasetsSec6.Colegio?.some(d => d.value > 0),
                         <div style={{ maxHeight: 240, overflowY: 'auto', border: '1px solid #E0E0E0', borderRadius: 4, width: '100%' }}>
                           <table className="vcm-table">
                             <thead>
@@ -2117,230 +1870,140 @@ export const DashboardVcM = () => {
                               ))}
                             </tbody>
                           </table>
-                        </div>
+                        </div>,
+                        240
                       )}
                     </Box>
                   </Grid>
                 </Grid>
-              )}
-            </div>
-          )}
-        </div>
+        </DashboardSection>
       </Box>
 
-      {/* ----------------- SIDEBAR LATERAL DERECHO (Filtros responsive) ----------------- */}
-      <Drawer
-        anchor="right"
-        variant="temporary"
-        open={mobileFiltersOpen}
-        onClose={() => setMobileFiltersOpen(false)}
-        sx={{
-          display: { xs: 'block', md: 'none' },
-          '& .MuiDrawer-paper': { boxSizing: 'border-box', width: 280, border: 'none' },
-        }}
+      {/* ----------------- SIDEBAR DE FILTROS MODULAR ----------------- */}
+      <DashboardFilterSidebar
+        title="Filtros VcM"
+        icon={<FilterIcon sx={{ color: '#E27800', fontSize: 18 }} />}
+        iconColor="#E27800"
+        collapsed={filtersCollapsed}
+        onToggleCollapse={() => setFiltersCollapsed(!filtersCollapsed)}
+        mobileOpen={mobileFiltersOpen}
+        onCloseMobile={() => setMobileFiltersOpen(false)}
+        hasData={hasRealData}
+        onReset={handleResetFilters}
+        resetLabel="Restablecer filtros"
       >
-        {filtersContent}
-      </Drawer>
+        {/* Slider de Años */}
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+          <Typography variant="subtitle2" sx={{ fontSize: '13px', fontWeight: 700, color: '#475569', letterSpacing: '0.5px' }}>
+            Año
+          </Typography>
+          <Box sx={{ px: 1, mt: 0.5 }}>
+            <Slider
+              value={[parseInt(cohorteDesde), parseInt(cohorteHasta)]}
+              onChange={(e, val) => {
+                setCohorteDesde(String(val[0]));
+                setCohorteHasta(String(val[1]));
+              }}
+              min={minYear}
+              max={maxYear}
+              step={1}
+              marks={availableYears.length ? availableYears.map(y => ({ value: y, label: String(y) })) : [
+                { value: 2023, label: '2023' },
+                { value: 2024, label: '2024' },
+                { value: 2025, label: '2025' },
+                { value: 2026, label: '2026' }
+              ]}
+              valueLabelDisplay="auto"
+              sx={styles.ageSliderStyle}
+            />
+            <Typography variant="body2" sx={{ textAlign: 'center', mt: 1.5, fontWeight: 600, color: '#1E2875', fontSize: '13px' }}>
+              {cohorteDesde === cohorteHasta ? cohorteDesde : `${cohorteDesde} — ${cohorteHasta}`}
+            </Typography>
 
-      {/* Sidebar colapsable para Desktop integrado con el diseño */}
-      <Box
-        component="aside"
-        sx={{
-          width: filtersCollapsed ? '40px' : '290px',
-          height: filtersCollapsed ? '40px' : 'calc(100vh - 40px)',
-          transition: 'width 250ms cubic-bezier(0.4, 0, 0.2, 1), height 250ms cubic-bezier(0.4, 0, 0.2, 1), background-color 250ms',
-          display: { xs: 'none', md: 'flex' },
-          flexDirection: 'column',
-          position: 'sticky',
-          top: '20px',
-          mr: '20px',
-          my: '20px',
-          borderRadius: filtersCollapsed ? '50%' : '16px',
-          overflow: 'hidden',
-          bgcolor: filtersCollapsed ? 'transparent' : '#FFFFFF',
-          border: filtersCollapsed ? 'none' : '1px solid #E2E8F0',
-          boxShadow: filtersCollapsed ? 'none' : '0 4px 6px -1px rgba(0,0,0,0.03), 0 2px 4px -1px rgba(0,0,0,0.02)',
-          flexShrink: 0,
-          zIndex: 90,
-        }}
-      >
-        {/* Botón Toggle Colapsar/Expandir en la cabecera */}
-        <Box sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: filtersCollapsed ? 'center' : 'space-between',
-          p: filtersCollapsed ? '0px' : '16px 12px',
-          bgcolor: filtersCollapsed ? 'transparent' : '#F8FAFC',
-          borderBottom: filtersCollapsed ? 'none' : '1px solid #E2E8F0',
-          height: filtersCollapsed ? '40px' : '56px',
-          width: filtersCollapsed ? '40px' : '100%',
-          boxSizing: 'border-box'
-        }}>
-          {!filtersCollapsed && (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-              <FilterIcon sx={{ color: '#E27800', fontSize: 18 }} />
-              <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#1E2875', fontSize: '14px' }}>
-                Filtros VcM
-              </Typography>
-            </Box>
-          )}
-          <IconButton 
-            onClick={() => setFiltersCollapsed(!filtersCollapsed)}
-            size="medium"
-            sx={{ 
-              color: '#1E2875',
-              width: filtersCollapsed ? '40px' : '32px',
-              height: filtersCollapsed ? '40px' : '32px',
-              bgcolor: filtersCollapsed ? '#FFFFFF' : 'rgba(30, 40, 117, 0.05)',
-              border: filtersCollapsed ? '1px solid #E2E8F0' : 'none',
-              boxShadow: filtersCollapsed ? '0 2px 4px rgba(0,0,0,0.08)' : 'none',
-              '&:hover': { bgcolor: filtersCollapsed ? '#F8FAFC' : 'rgba(30, 40, 117, 0.1)' }
-            }}
-          >
-            {filtersCollapsed ? <ChevronRightIcon /> : <ChevronRightIcon style={{ transform: 'rotate(180deg)', transition: 'transform 200ms' }} />}
-          </IconButton>
+            {/* Checkbox para Periodo Acumulado */}
+            {cohorteDesde !== cohorteHasta && (
+              <Box sx={{ display: 'flex', justifyContent: 'center', mt: 0.5 }}>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={periodoAcumulado}
+                      onChange={(e) => setPeriodoAcumulado(e.target.checked)}
+                      size="small"
+                      sx={{
+                        color: '#1E2875',
+                        '&.Mui-checked': {
+                          color: '#1DC2A0',
+                        },
+                      }}
+                    />
+                  }
+                  label={
+                    <Typography sx={{ fontFamily: "'Inter', sans-serif", fontSize: '12px', fontWeight: 500, color: '#475569' }}>
+                      Período acumulado
+                    </Typography>
+                  }
+                  sx={{ mx: 0 }}
+                />
+              </Box>
+            )}
+          </Box>
         </Box>
 
-        {/* Contenido de los filtros (solo visible si no está colapsado) */}
-        <Box sx={{ 
-          flexGrow: 1, 
-          opacity: filtersCollapsed ? 0 : 1,
-          visibility: filtersCollapsed ? 'hidden' : 'visible',
-          transition: 'opacity 150ms ease-in-out, visibility 150ms ease-in-out',
-          display: 'flex',
-          flexDirection: 'column',
-          height: 'calc(100% - 56px)',
-          overflow: 'hidden'
-        }}>
-          <Box sx={{ 
-            flexGrow: 1, 
-            overflowY: 'auto',
-            px: 2.5,
-            py: 2.5,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 2.5
-          }}>
-            {/* Slider de Años */}
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-              <Typography variant="subtitle2" sx={{ fontSize: '13px', fontWeight: 700, color: '#475569', letterSpacing: '0.5px' }}>
-                Año
-              </Typography>
-              <Box sx={{ px: 1, mt: 0.5 }}>
-                <Slider
-                  value={[parseInt(cohorteDesde), parseInt(cohorteHasta)]}
-                  onChange={(e, val) => {
-                    setCohorteDesde(String(val[0]));
-                    setCohorteHasta(String(val[1]));
-                  }}
-                  min={minYear}
-                  max={maxYear}
-                  step={1}
-                  marks={availableYears.length ? availableYears.map(y => ({ value: y, label: String(y) })) : [
-                    { value: 2023, label: '2023' },
-                    { value: 2024, label: '2024' },
-                    { value: 2025, label: '2025' },
-                    { value: 2026, label: '2026' }
-                  ]}
-                  valueLabelDisplay="auto"
-                  sx={styles.ageSliderStyle}
-                />
-                <Typography variant="body2" sx={{ textAlign: 'center', mt: 1.5, fontWeight: 600, color: '#1E2875', fontSize: '13px' }}>
-                  {cohorteDesde === cohorteHasta ? cohorteDesde : `${cohorteDesde} - ${cohorteHasta}`}
-                </Typography>
-
-                {/* Checkbox para Periodo Acumulado (Móvil) */}
-                {cohorteDesde !== cohorteHasta && (
-                  <Box sx={{ display: 'flex', justifyContent: 'center', mt: 0.5 }}>
-                    <FormControlLabel
-                      control={
-                        <Checkbox
-                          checked={periodoAcumulado}
-                          onChange={(e) => setPeriodoAcumulado(e.target.checked)}
-                          size="small"
-                          sx={{
-                            color: '#1E2875',
-                            '&.Mui-checked': {
-                              color: '#1DC2A0',
-                            },
-                          }}
-                        />
-                      }
-                      label={
-                        <Typography sx={{ fontFamily: "'Inter', sans-serif", fontSize: '12px', fontWeight: 500, color: '#475569' }}>
-                          Período acumulado
-                        </Typography>
-                      }
-                      sx={{ mx: 0 }}
-                    />
-                  </Box>
-                )}
-              </Box>
-            </Box>
-
-            {/* Accordions de filtros (solo si hay datos) */}
-            {hasRealData && (
-            <>
-            <Accordion 
-              expanded={openConvenios} 
-              onChange={(e, expanded) => setOpenConvenios(expanded)}
-              sx={{ boxShadow: 'none', border: 'none', mt: -0.5, margin: '0 !important', '&:before': { display: 'none' } }}
-            >
-              <AccordionSummary sx={{ p: 0, minHeight: '0 !important', margin: '0 !important', '& .MuiAccordionSummary-content': { my: 1, margin: '0 !important', display: 'flex', alignItems: 'center', gap: 1 } }}>
-                <ChevronDown style={{ transform: openConvenios ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 200ms', color: '#475569' }} size={16} />
-                <Typography sx={{ fontSize: 13, fontWeight: 700, color: '#475569', textTransform: 'none', letterSpacing: '0.06em' }}>
-                  Convenios
-                </Typography>
-              </AccordionSummary>
-              <AccordionDetails sx={{ p: 0, pt: 1.5, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                  <Typography variant="caption" sx={{ fontWeight: 600, color: '#9E9E9E', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                    Sector
+        {/* Accordions de filtros (solo si hay datos) */}
+        {hasRealData && (
+          <>
+            {/* Convenios */}
+            {(sectorsList.length > 0 || dynamicTipos.length > 0 || dynamicAreas.length > 0) && (
+              <Accordion 
+                expanded={openConvenios} 
+                onChange={(e, expanded) => setOpenConvenios(expanded)}
+                sx={{ boxShadow: 'none', border: 'none', mt: -0.5, margin: '0 !important', '&:before': { display: 'none' } }}
+              >
+                <AccordionSummary sx={{ p: 0, minHeight: '0 !important', margin: '0 !important', '& .MuiAccordionSummary-content': { my: 1, margin: '0 !important', display: 'flex', alignItems: 'center', gap: 1 } }}>
+                  <ChevronDown style={{ transform: openConvenios ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 200ms', color: '#475569' }} size={16} />
+                  <Typography sx={{ fontSize: 13, fontWeight: 700, color: '#475569', textTransform: 'none', letterSpacing: '0.06em' }}>
+                    Convenios
                   </Typography>
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap' }}>
-                     {sectorsList.map((chip) => (
-                       <FilterChip
-                         key={chip.val}
-                         label={chip.label}
-                         selected={selectedSectores.includes(chip.val)}
-                         onClick={() => toggleChip(selectedSectores, setSelectedSectores, chip.val)}
-                       />
-                     ))}
-                  </Box>
-                </Box>
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                  <Typography variant="caption" sx={{ fontWeight: 600, color: '#9E9E9E', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                    Tipo de convenio
-                  </Typography>
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap' }}>
-                     {dynamicTipos.map((chip) => (
-                       <FilterChip
-                         key={chip.val}
-                         label={chip.label}
-                         selected={selectedTiposConvenio.includes(chip.val)}
-                         onClick={() => toggleChip(selectedTiposConvenio, setSelectedTiposConvenio, chip.val)}
-                       />
-                     ))}
-                  </Box>
-                </Box>
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                  <Typography variant="caption" sx={{ fontWeight: 600, color: '#9E9E9E', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                    Estado
-                  </Typography>
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap' }}>
-                    {['Activo', 'Cerrado'].map((lbl) => (
-                      <FilterChip
-                        key={lbl}
-                        label={lbl}
-                        selected={selectedEstados.includes(lbl.toLowerCase())}
-                        onClick={() => toggleChip(selectedEstados, setSelectedEstados, lbl.toLowerCase())}
-                      />
-                    ))}
-                  </Box>
-                </Box>
+                </AccordionSummary>
+                <AccordionDetails sx={{ p: 0, pt: 1.5, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  {sectorsList.length > 0 && (
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                      <Typography variant="caption" sx={{ fontWeight: 600, color: '#9E9E9E', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                        Sector
+                      </Typography>
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap' }}>
+                        {sectorsList.map((chip) => (
+                          <FilterChip
+                            key={chip.val}
+                            label={chip.label}
+                            selected={selectedSectores.includes(chip.val)}
+                            onClick={() => toggleChip(selectedSectores, setSelectedSectores, chip.val)}
+                          />
+                        ))}
+                      </Box>
+                    </Box>
+                  )}
 
-                {/* Área vinculada */}
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                  {dynamicTipos.length > 0 && (
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                      <Typography variant="caption" sx={{ fontWeight: 600, color: '#9E9E9E', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                        Tipo de convenio
+                      </Typography>
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap' }}>
+                        {dynamicTipos.map((chip) => (
+                          <FilterChip
+                            key={chip.val}
+                            label={chip.label}
+                            selected={selectedTiposConvenio.includes(chip.val)}
+                            onClick={() => toggleChip(selectedTiposConvenio, setSelectedTiposConvenio, chip.val)}
+                          />
+                        ))}
+                      </Box>
+                    </Box>
+                  )}
+
+                  {dynamicAreas.length > 0 && (
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                       <Typography variant="caption" sx={{ fontWeight: 600, color: '#9E9E9E', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                         Área vinculada
                       </Typography>
@@ -2355,130 +2018,378 @@ export const DashboardVcM = () => {
                         ))}
                       </Box>
                     </Box>
-                  </AccordionDetails>
-                </Accordion>
-
-            <Accordion 
-              expanded={openActividades} 
-              onChange={(e, expanded) => setOpenActividades(expanded)}
-              sx={{ boxShadow: 'none', border: 'none', margin: '0 !important', '&:before': { display: 'none' } }}
-            >
-              <AccordionSummary sx={{ p: 0, minHeight: '0 !important', margin: '0 !important', '& .MuiAccordionSummary-content': { my: 1, margin: '0 !important', display: 'flex', alignItems: 'center', gap: 1 } }}>
-                <ChevronDown style={{ transform: openActividades ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 200ms', color: '#475569' }} size={16} />
-                <Typography sx={{ fontSize: 13, fontWeight: 700, color: '#475569', textTransform: 'none', letterSpacing: '0.06em' }}>
-                  Actividades
-                </Typography>
-              </AccordionSummary>
-              <AccordionDetails sx={{ p: 0, pt: 1.5, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                  <Typography variant="caption" sx={{ fontWeight: 600, color: '#9E9E9E', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                    Línea VcM
-                  </Typography>
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap' }}>
-                     {dynamicLineas.map((chip) => (
-                       <FilterChip
-                         key={chip.val}
-                         label={chip.label}
-                         selected={selectedLineas.includes(chip.val)}
-                         onClick={() => toggleChip(selectedLineas, setSelectedLineas, chip.val)}
-                       />
-                     ))}
-                  </Box>
-                </Box>
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                  <Typography variant="caption" sx={{ fontWeight: 600, color: '#9E9E9E', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                    Modalidad
-                  </Typography>
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap' }}>
-                     {modalidadesList.map((chip) => (
-                       <FilterChip
-                         key={chip.val}
-                         label={chip.label}
-                         selected={selectedModalidades.includes(chip.val)}
-                         onClick={() => toggleChip(selectedModalidades, setSelectedModalidades, chip.val)}
-                       />
-                     ))}
-                  </Box>
-                </Box>
-              </AccordionDetails>
-            </Accordion>
-
-            <Accordion 
-              expanded={openArticulacion} 
-              onChange={(e, expanded) => setOpenArticulacion(expanded)}
-              sx={{ boxShadow: 'none', border: 'none', margin: '0 !important', '&:before': { display: 'none' } }}
-            >
-              <AccordionSummary sx={{ p: 0, minHeight: '0 !important', margin: '0 !important', '& .MuiAccordionSummary-content': { my: 1, margin: '0 !important', display: 'flex', alignItems: 'center', gap: 1 } }}>
-                <ChevronDown style={{ transform: openArticulacion ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 200ms', color: '#475569' }} size={16} />
-                <Typography sx={{ fontSize: 13, fontWeight: 700, color: '#475569', textTransform: 'none', letterSpacing: '0.06em' }}>
-                  Articulación TP
-                </Typography>
-              </AccordionSummary>
-              <AccordionDetails sx={{ p: 0, pt: 1.5, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                  <Typography variant="caption" sx={{ fontWeight: 600, color: '#9E9E9E', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                    Plataforma Foco
-                  </Typography>
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap' }}>
-                     {dynamicPlataformas.map((chip) => (
-                       <FilterChip
-                         key={chip.val}
-                         label={chip.label}
-                         selected={selectedPlataformas.includes(chip.val)}
-                         onClick={() => toggleChip(selectedPlataformas, setSelectedPlataformas, chip.val)}
-                       />
-                     ))}
-                  </Box>
-                </Box>
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                  <Typography variant="caption" sx={{ fontWeight: 600, color: '#9E9E9E', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                    Tipo de articulación
-                  </Typography>
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap' }}>
-                     {dynamicTiposArticulacion.map((chip) => (
-                       <FilterChip
-                         key={chip.val}
-                         label={chip.label}
-                         selected={selectedTiposArticulacion.includes(chip.val)}
-                         onClick={() => toggleChip(selectedTiposArticulacion, setSelectedTiposArticulacion, chip.val)}
-                       />
-                     ))}
-                  </Box>
-                </Box>
-              </AccordionDetails>
-            </Accordion>
-            </>
+                  )}
+                </AccordionDetails>
+              </Accordion>
             )}
-          </Box>
 
-          {/* Mensaje sin datos */}
-          {!apiLoading && !hasRealData && (
-            <Box sx={{ mx: 2, mb: 2, p: 2, bgcolor: '#FEF3C7', borderRadius: 2, border: '1px solid #F59E0B' }}>
-              <Typography sx={{ fontSize: '13px', color: '#92400E', textAlign: 'center', fontWeight: 500 }}>
-                No hay datos disponibles para los filtros.
-              </Typography>
-            </Box>
-          )}
+            {/* Actividades */}
+            {(dynamicLineas.length > 0 || modalidadesList.length > 0) && (
+              <Accordion 
+                expanded={openActividades} 
+                onChange={(e, expanded) => setOpenActividades(expanded)}
+                sx={{ boxShadow: 'none', border: 'none', margin: '0 !important', '&:before': { display: 'none' } }}
+              >
+                <AccordionSummary sx={{ p: 0, minHeight: '0 !important', margin: '0 !important', '& .MuiAccordionSummary-content': { my: 1, margin: '0 !important', display: 'flex', alignItems: 'center', gap: 1 } }}>
+                  <ChevronDown style={{ transform: openActividades ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 200ms', color: '#475569' }} size={16} />
+                  <Typography sx={{ fontSize: 13, fontWeight: 700, color: '#475569', textTransform: 'none', letterSpacing: '0.06em' }}>
+                    Actividades
+                  </Typography>
+                </AccordionSummary>
+                <AccordionDetails sx={{ p: 0, pt: 1.5, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  {dynamicLineas.length > 0 && (
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                      <Typography variant="caption" sx={{ fontWeight: 600, color: '#9E9E9E', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                        Línea VcM
+                      </Typography>
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap' }}>
+                        {dynamicLineas.map((chip) => (
+                          <FilterChip
+                            key={chip.val}
+                            label={chip.label}
+                            selected={selectedLineas.includes(chip.val)}
+                            onClick={() => toggleChip(selectedLineas, setSelectedLineas, chip.val)}
+                          />
+                        ))}
+                      </Box>
+                    </Box>
+                  )}
 
-          {/* Footer Reset Button */}
-          <Box sx={{ p: 2, borderTop: '1px solid #E2E8F0', bgcolor: '#F8FAFC' }}>
-            <Button
-              variant="outlined"
-              color="secondary"
-              startIcon={<ResetIcon />}
-              onClick={handleResetFilters}
-              fullWidth
-              sx={{
-                textTransform: 'none',
-                fontWeight: 600,
-                borderRadius: '8px',
+                  {modalidadesList.length > 0 && (
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                      <Typography variant="caption" sx={{ fontWeight: 600, color: '#9E9E9E', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                        Modalidad
+                      </Typography>
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap' }}>
+                        {modalidadesList.map((chip) => (
+                          <FilterChip
+                            key={chip.val}
+                            label={chip.label}
+                            selected={selectedModalidades.includes(chip.val)}
+                            onClick={() => toggleChip(selectedModalidades, setSelectedModalidades, chip.val)}
+                          />
+                        ))}
+                      </Box>
+                    </Box>
+                  )}
+                </AccordionDetails>
+              </Accordion>
+            )}
+
+            {/* Articulación TP */}
+            {(dynamicPlataformas.length > 0 || dynamicTiposArticulacion.length > 0) && (
+              <Accordion 
+                expanded={openArticulacion} 
+                onChange={(e, expanded) => setOpenArticulacion(expanded)}
+                sx={{ boxShadow: 'none', border: 'none', margin: '0 !important', '&:before': { display: 'none' } }}
+              >
+                <AccordionSummary sx={{ p: 0, minHeight: '0 !important', margin: '0 !important', '& .MuiAccordionSummary-content': { my: 1, margin: '0 !important', display: 'flex', alignItems: 'center', gap: 1 } }}>
+                  <ChevronDown style={{ transform: openArticulacion ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 200ms', color: '#475569' }} size={16} />
+                  <Typography sx={{ fontSize: 13, fontWeight: 700, color: '#475569', textTransform: 'none', letterSpacing: '0.06em' }}>
+                    Articulación TP
+                  </Typography>
+                </AccordionSummary>
+                <AccordionDetails sx={{ p: 0, pt: 1.5, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  {dynamicPlataformas.length > 0 && (
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                      <Typography variant="caption" sx={{ fontWeight: 600, color: '#9E9E9E', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                        Plataforma Foco
+                      </Typography>
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap' }}>
+                        {dynamicPlataformas.map((chip) => (
+                          <FilterChip
+                            key={chip.val}
+                            label={chip.label}
+                            selected={selectedPlataformas.includes(chip.val)}
+                            onClick={() => toggleChip(selectedPlataformas, setSelectedPlataformas, chip.val)}
+                          />
+                        ))}
+                      </Box>
+                    </Box>
+                  )}
+
+                  {dynamicTiposArticulacion.length > 0 && (
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                      <Typography variant="caption" sx={{ fontWeight: 600, color: '#9E9E9E', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                        Tipo de articulación
+                      </Typography>
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap' }}>
+                        {dynamicTiposArticulacion.map((chip) => (
+                          <FilterChip
+                            key={chip.val}
+                            label={chip.label}
+                            selected={selectedTiposArticulacion.includes(chip.val)}
+                            onClick={() => toggleChip(selectedTiposArticulacion, setSelectedTiposArticulacion, chip.val)}
+                          />
+                        ))}
+                      </Box>
+                    </Box>
+                  )}
+                </AccordionDetails>
+              </Accordion>
+            )}
+          </>
+        )}
+      </DashboardFilterSidebar>
+
+      {/* ----------------- DRAWER LATERAL DE DETALLE DE INDICADOR ----------------- */}
+      <Box 
+        sx={styles.drawerOverlay(drawerOpen)} 
+        onClick={handleCloseDrawer} 
+        aria-hidden={!drawerOpen}
+      />
+      <Box 
+        component="aside"
+        role="dialog" 
+        aria-modal="true" 
+        aria-label="Detalle del indicador"
+        sx={styles.indicatorDrawer(drawerOpen)} 
+      >
+        <Box sx={styles.drawerHeader}>
+          <Box sx={styles.drawerTitleRow}>
+            <Typography sx={styles.drawerTitle}>
+              {currentIndicator.title}
+            </Typography>
+            <IconButton 
+              size="small" 
+              onClick={handleCloseDrawer} 
+              sx={{ 
+                color: '#64748B',
+                borderRadius: '6px',
+                '&:hover': { bgcolor: '#F1F5F9', color: '#1E293B' }
               }}
+              aria-label="Cerrar detalle"
             >
-              Restablecer filtros
-            </Button>
+              <CloseIcon fontSize="small" />
+            </IconButton>
           </Box>
         </Box>
+
+        <Box sx={styles.drawerBody}>
+          {drawerLoading ? (
+            <Box sx={{ width: '100%', py: 4 }}>
+              <LinearProgress sx={{ bgcolor: '#E2E8F0', '& .MuiLinearProgress-bar': { bgcolor: '#E27800' } }} />
+            </Box>
+          ) : currentIndicator.isError ? (
+            <Box sx={{ mt: 2 }}>
+              <Alert severity="error" sx={{ borderRadius: '8px', fontSize: '13px', fontWeight: 500 }}>
+                {currentIndicator.errorMessage || 'Error al cargar los datos del indicador desde el servidor.'}
+              </Alert>
+            </Box>
+          ) : (
+            <>
+              {/* 1. Qué mide */}
+              {currentIndicator.desc && (
+                <Box>
+                  <Typography sx={styles.drawerDescLabel}>Qué mide</Typography>
+                  <Typography sx={styles.drawerDesc}>
+                    {currentIndicator.desc}
+                  </Typography>
+                </Box>
+              )}
+
+              {/* 2. Métrica destacada */}
+              {currentIndicator.metric && (
+                <Box sx={styles.drawerMetricBox}>
+                  <Typography sx={styles.drawerMetricLabel}>
+                    {currentIndicator.metric.label}
+                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1, flexWrap: 'wrap' }}>
+                    <Typography sx={styles.drawerMetricValue}>
+                      {currentIndicator.metric.value !== null 
+                        ? (typeof currentIndicator.metric.value === 'number' 
+                            ? currentIndicator.metric.value.toLocaleString('es-CL') 
+                            : currentIndicator.metric.value)
+                        : 'Sin datos'}
+                    </Typography>
+                    {currentIndicator.trend && (
+                      <Box sx={styles.drawerMetaBadge(
+                        currentIndicator.trend.isNeutral 
+                          ? 'neutral' 
+                          : (currentIndicator.trend.isPositive !== false)
+                      )}>
+                        <Typography sx={{ fontSize: '12px', fontWeight: 600 }}>
+                          {currentIndicator.trend.rawText 
+                            ? currentIndicator.trend.rawText
+                            : currentIndicator.trend.isNeutral
+                                ? `Igual al año anterior${currentIndicator.trend.baseline ? ` (${currentIndicator.trend.baseline})` : ''}`
+                                : `${currentIndicator.trend.isPositive !== false 
+                                    ? `▲ ${currentIndicator.trend.formattedDelta || `+${currentIndicator.trend.delta}`}` 
+                                    : `▼ ${currentIndicator.trend.formattedDelta || currentIndicator.trend.delta}`
+                                  } ${currentIndicator.trend.baseline ? (
+                                    currentIndicator.trend.baseline.startsWith('del ') || 
+                                    currentIndicator.trend.baseline.startsWith('de ') || 
+                                    currentIndicator.trend.baseline.startsWith('total')
+                                      ? currentIndicator.trend.baseline
+                                      : `vs ${currentIndicator.trend.baseline}`
+                                  ) : ''}`}
+                        </Typography>
+                      </Box>
+                    )}
+                  </Box>
+                </Box>
+              )}
+
+
+              {/* 3. Desglose de datos en tabla */}
+              {displayRows && displayRows.length > 0 ? (
+                <Box sx={{ mt: 0.5 }}>
+                  <Box sx={styles.drawerTableWrap}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', fontFamily: "'Inter', sans-serif" }}>
+                      <thead>
+                        <tr style={{ background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', position: 'sticky', top: 0, zIndex: 1 }}>
+                          {(currentIndicator.colLabels || ['Año', 'Valor']).map((col, idx) => (
+                            <th 
+                              key={idx} 
+                              style={{ 
+                                padding: '9px 14px', 
+                                textAlign: idx === (currentIndicator.colLabels || []).length - 1 ? 'right' : 'left', 
+                                color: '#64748B', 
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                letterSpacing: '0.06em',
+                                textTransform: 'uppercase',
+                                borderBottom: '1px solid #E2E8F0'
+                              }}
+                            >
+                              {col}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {displayRows.map((row, idx) => (
+                          <tr 
+                            key={idx} 
+                            style={{ 
+                              borderBottom: idx === displayRows.length - 1 ? 'none' : '1px solid #F1F5F9'
+                            }}
+                          >
+                            {row.map((cell, cIdx) => (
+                              <td 
+                                key={cIdx} 
+                                style={{ 
+                                  padding: '8px 14px', 
+                                  textAlign: cIdx === row.length - 1 ? 'right' : 'left', 
+                                  color: '#1E293B',
+                                  fontWeight: cIdx === row.length - 1 ? 600 : 400
+                                }}
+                              >
+                                {typeof cell === 'number' ? cell.toLocaleString('es-CL') : cell}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </Box>
+                </Box>
+              ) : (
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 160, color: '#64748b', fontSize: '13px', fontWeight: 500, border: '1px dashed #E2E8F0', borderRadius: '12px', bgcolor: '#F8FAFC', width: '100%', mt: 2 }}>
+                  Sin datos disponibles
+                </Box>
+              )}
+            </>
+          )}
+        </Box>
+
+        {/* Footer */}
+        <Box component="footer" sx={styles.drawerFooter}>
+          <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+            <CalendarIcon sx={{ fontSize: 14, color: '#64748B' }} />
+            <Typography component="label" htmlFor="drawerPeriodSelect" sx={{ fontSize: '12px', color: '#64748B' }}>
+              Año
+            </Typography>
+            <select
+              id="drawerPeriodSelect"
+              aria-label="Seleccionar período"
+              value={drawerPeriod}
+              onChange={(e) => handleDrawerPeriodChange(e.target.value)}
+              style={{
+                fontFamily: "'Inter', sans-serif",
+                fontSize: '12px',
+                fontWeight: 500,
+                color: '#1E293B',
+                border: '1px solid #CBD5E1',
+                borderRadius: '6px',
+                padding: '5px 8px',
+                backgroundColor: '#FFFFFF',
+                cursor: 'pointer',
+                outline: 'none',
+              }}
+            >
+              {drawerYears.map((yr) => (
+                <option key={yr} value={String(yr)}>{yr}</option>
+              ))}
+            </select>
+          </Box>
+          <Typography sx={{ fontSize: '12px', color: '#64748B' }}>
+            {drawerPeriodText}
+          </Typography>
+        </Box>
       </Box>
+
+      {/* BOTÓN FLOTANTE DE CENTRO DE AYUDA (?) */}
+      <IconButton
+        sx={styles.floatingHelpButton}
+        onClick={() => setOpenHelpDialog(true)}
+        aria-label="Centro de ayuda"
+      >
+        <HelpIcon sx={{ fontSize: '26px' }} />
+      </IconButton>
+
+      {/* MODAL DE CENTRO DE AYUDA */}
+      <Dialog
+        open={openHelpDialog}
+        onClose={() => setOpenHelpDialog(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: '16px',
+            p: 1,
+            bgcolor: '#FFFFFF',
+            color: '#212121',
+          },
+        }}
+      >
+        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', pb: 1 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <HelpIcon sx={{ color: '#E27800' }} />
+            <Typography variant="h6" sx={{ fontWeight: 700, color: '#1E2875' }}>
+              Centro de Ayuda — Vinculación con el Medio
+            </Typography>
+          </Box>
+          <IconButton onClick={() => setOpenHelpDialog(false)} size="small">
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, pt: 1 }}>
+          {faqData.map((faq, index) => (
+            <Accordion
+              key={index}
+              sx={{
+                boxShadow: 'none',
+                border: '1px solid #E5E7EB',
+                borderRadius: '8px !important',
+                '&:before': { display: 'none' },
+              }}
+            >
+              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                <Typography variant="body2" sx={{ fontWeight: 600, color: '#1E2875' }}>
+                  {faq.q}
+                </Typography>
+              </AccordionSummary>
+              <AccordionDetails sx={{ pt: 0 }}>
+                <Typography variant="body2" sx={{ color: '#4B5563', lineHeight: 1.6 }}>
+                  {faq.a}
+                </Typography>
+              </AccordionDetails>
+            </Accordion>
+          ))}
+        </DialogContent>
+      </Dialog>
       </Box>
     </ThemeProvider>
   );

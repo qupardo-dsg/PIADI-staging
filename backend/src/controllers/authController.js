@@ -1,8 +1,10 @@
 const jwt = require('jsonwebtoken');
-const { User, Role } = require('../models');
+const { User, Role, Department } = require('../models');
 const { JWT_SECRET } = require('../middleware/authMiddleware');
 const { ValidationError, UnauthorizedError } = require('../utils/errors');
 const auditService = require('../services/auditService');
+
+const getJwtExpiration = () => process.env.JWT_EXPIRATION || '2h';
 
 /**
  * Controller to handle user login authentication.
@@ -33,7 +35,10 @@ const login = async (req, res, next) => {
           { username: username }
         ]
       },
-      include: [{ model: Role, as: 'role' }]
+      include: [
+        { model: Role, as: 'role' },
+        { model: Department, as: 'department' }
+      ]
     });
 
     if (!user) {
@@ -66,17 +71,30 @@ const login = async (req, res, next) => {
       throw new UnauthorizedError('Usuario o contraseña incorrectos');
     }
 
+    // Resolve departmentId
+    let departmentId = user.department ? user.department.key : user.departmentId;
+    if (!departmentId && user.role) {
+      const roleLower = (user.role.name || '').toLowerCase();
+      if (roleLower.includes('innovación') || roleLower.includes('innovacion')) {
+        departmentId = 'innovacion';
+      } else if (roleLower.includes('vinculación') || roleLower.includes('vinculacion') || roleLower.includes('vcm')) {
+        departmentId = 'vinculacion_medio';
+      } else if (roleLower.includes('continua')) {
+        departmentId = 'educacion_continua';
+      }
+    }
+
     // Generate JWT token
     const payload = {
       id: user.id,
       email: user.email,
       name: user.name,
       role: user.role ? user.role.name : null,
-      roleGroup: user.role ? user.role.group : null
+      roleGroup: user.role ? user.role.group : null,
+      departmentId: departmentId || null
     };
 
-    // Sign the token with an expiration of 2 hours
-    const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '2h' });
+    const token = jwt.sign(payload, JWT_SECRET, { expiresIn: getJwtExpiration() });
 
     auditService.recordSession({
       userId: user.id,
@@ -115,5 +133,6 @@ const logout = async (req, res, next) => {
 
 module.exports = {
   login,
-  logout
+  logout,
+  getJwtExpiration
 };

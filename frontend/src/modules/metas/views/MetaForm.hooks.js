@@ -6,6 +6,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../auth';
 import { getDepartments, getDepartmentKpis, createMeta, updateMeta } from '../../../services/piadiApi';
+import { canCreateMeta, isRectoria } from '../metaAccess';
 
 export const METRICAS_POOL = [
   'Total de deserciones', 
@@ -53,20 +54,39 @@ export const useMetaForm = () => {
   const [creadaPor, setCreadaPor] = useState('');
   const [metricas, setMetricas] = useState([]);
 
-  // Load departments from database on mount
+  // La autorización real permanece en backend; esta redirección evita mostrar un formulario inutilizable.
+  useEffect(() => {
+    if (user && !canCreateMeta(user)) {
+      navigate('/metas');
+    }
+  }, [user, navigate]);
+
+  // Load departments from database on mount and filter by role
   useEffect(() => {
     const fetchDepts = async () => {
       try {
         const res = await getDepartments();
         if (res.success && Array.isArray(res.data)) {
-          setDepartmentsList(res.data);
+          if (isRectoria(user)) {
+            setDepartmentsList(res.data);
+          } else {
+            if (user?.departmentId) {
+              const filtered = res.data.filter(d => d.key === user.departmentId);
+              setDepartmentsList(filtered);
+              if (filtered.length === 1) {
+                setDepartamento(filtered[0].key);
+              }
+            } else {
+              setDepartmentsList([]);
+            }
+          }
         }
       } catch (err) {
         console.error('Error fetching departments:', err);
       }
     };
     fetchDepts();
-  }, []);
+  }, [user]);
 
   // Load KPIs whenever the selected department changes
   useEffect(() => {
@@ -112,6 +132,7 @@ export const useMetaForm = () => {
   const [showSaveAlert, setShowSaveAlert] = useState(false);
   const [showSuccessAlert, setShowSuccessAlert] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
+  const [successDesc, setSuccessDesc] = useState('');
 
   // Modals Visibility
   const [metricModalOpen, setMetricModalOpen] = useState(false);
@@ -305,11 +326,12 @@ export const useMetaForm = () => {
       }
 
       setSuccessMsg(modo === 'crear' ? 'Meta creada con éxito' : 'Meta guardada con éxito');
+      setSuccessDesc(modo === 'crear' ? 'La meta se ha creado correctamente.' : 'La meta se ha editado correctamente.');
       setShowSuccessAlert(true);
 
       // Limpiar campos del formulario
       setNombre('');
-      setDepartamento('');
+      setDepartamento(isRectoria(user) ? '' : (user?.departmentId || ''));
       setComportamiento('no-debe-superar');
       setInicio('');
       setLimite('');
@@ -322,7 +344,7 @@ export const useMetaForm = () => {
       }
     } catch (err) {
       console.error('Error saving meta:', err);
-      alert('Hubo un error al guardar la meta en el servidor.');
+      alert('Hubo un error al guardar la meta.');
     }
   };
 
@@ -332,7 +354,7 @@ export const useMetaForm = () => {
   };
 
   const filteredDepartments = useMemo(() => {
-    if (user?.role === 'Rector') {
+    if (isRectoria(user)) {
       return departmentsList;
     }
     return departmentsList.filter(d => d.key !== 'institucional');
@@ -370,6 +392,7 @@ export const useMetaForm = () => {
     showSuccessAlert,
     setShowSuccessAlert,
     successMsg,
+    successDesc,
     metricModalOpen,
     setMetricModalOpen,
     previewModalOpen,

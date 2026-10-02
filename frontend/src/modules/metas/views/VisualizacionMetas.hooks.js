@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../auth';
 import { getMetas, deleteMeta, getDepartments } from '../../../services/piadiApi';
+import { canCreateMeta as userCanCreateMeta } from '../metaAccess';
 
 const PRIORIDAD_RANK = { alta: 0, media: 1, baja: 2 };
 
@@ -59,14 +60,15 @@ export const useVisualizacionMetas = () => {
             comportamiento: firstMetric.behavior || m.comportamiento || 'debe-superar',
             lowerLimit: firstMetric.lowerLimit !== undefined ? firstMetric.lowerLimit : null,
             upperLimit: firstMetric.upperLimit !== undefined ? firstMetric.upperLimit : null,
-            tipoValor: firstMetric.valueType || 'number'
+            tipoValor: firstMetric.valueType || 'number',
+            permissions: m.permissions || { canEdit: false, canDelete: false }
           };
         });
         setMetas(mapped);
       }
     } catch (err) {
       console.error('Error loading metas:', err);
-      setError('No se pudieron obtener las metas desde el servidor.');
+      setError('No se pudieron obtener las metas.');
     } finally {
       setLoading(false);
     }
@@ -252,7 +254,7 @@ export const useVisualizacionMetas = () => {
       await fetchBackendMetas();
     } catch (err) {
       console.error('Error deleting meta:', err);
-      alert('Hubo un error al eliminar la meta en el servidor.');
+      alert('Hubo un error al eliminar la meta.');
     } finally {
       handleCloseDeleteDialog();
     }
@@ -270,10 +272,13 @@ export const useVisualizacionMetas = () => {
     return { total, cumplimiento, riesgo };
   }, [metas]);
 
+  const canCreateMeta = useMemo(() => userCanCreateMeta(user), [user]);
+
   return {
     navigate,
     user,
     logout,
+    canCreateMeta,
     activeMenu,
     setActiveMenu,
     mobileOpen,

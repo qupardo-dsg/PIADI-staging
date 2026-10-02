@@ -1,4 +1,5 @@
 const { AppError } = require('../utils/errors');
+const { MAX_UPLOAD_SIZE_MB } = require('../config/upload');
 
 const INTERNAL_ERROR_MESSAGE = 'Error interno, contacte al administrador';
 
@@ -40,10 +41,14 @@ const translateValidationError = (e) => {
  * Intercepta errores operativos, de Sequelize y de servidor genéricos.
  */
 const errorHandler = (err, req, res, next) => {
-  // 1. Logs de error detallados en consola para desarrollo
-  console.error('--- ERROR DETECTADO ---');
-  console.error(err);
-  console.error('----------------------');
+  // Log técnico sin incluir headers, tokens, body ni parámetros de la solicitud.
+  console.error('[errorHandler]', {
+    timestamp: new Date().toISOString(),
+    operation: `${req.method || 'UNKNOWN'} ${req.originalUrl || req.path || 'UNKNOWN'}`,
+    name: err.name || 'Error',
+    message: err.message || '',
+    stack: err.stack || ''
+  });
 
   const declaredStatus = Number(err.statusCode || err.status);
   let statusCode = Number.isInteger(declaredStatus) && declaredStatus >= 400 && declaredStatus < 500
@@ -108,7 +113,7 @@ const errorHandler = (err, req, res, next) => {
     statusCode = 422;
     errorMessage = 'No se pudo validar el archivo enviado.';
     if (err.code === 'LIMIT_FILE_SIZE') {
-      errorMessage = 'Error al subir archivo: El tamaño del archivo excede el límite permitido.';
+      errorMessage = `El archivo supera el tamaño máximo permitido de ${MAX_UPLOAD_SIZE_MB} MB.`;
     } else if (err.code === 'LIMIT_UNEXPECTED_FIELD') {
       errorMessage = 'Error al subir archivo: Campo de carga inesperado en el formulario (debe ser "archivo").';
     }

@@ -1,17 +1,12 @@
 import React from 'react';
 import { useCargaDatos, getTemplateColor } from './CargaDatos.hooks';
 import { styles } from './CargaDatos.styles';
-import logoEcas from '../../../assets/logo_ECAS_white.svg';
+import { Header, Sidebar } from '../../../components';
 import {
   Box,
   Typography,
   Button,
-  Avatar,
   IconButton,
-  Divider,
-  Drawer,
-  AppBar,
-  Toolbar,
   Card,
   CardContent,
   Table,
@@ -32,17 +27,13 @@ import {
   Grid,
   Tooltip,
   Collapse,
+  Divider,
+  Chip,
 } from '@mui/material';
 import {
-  Home as HomeIcon,
-  Dashboard as DashboardIcon,
   UploadFile as CargaIcon,
-  Shield as AuditoriaIcon,
-  ExitToApp as LogoutIcon,
   CheckCircle as CheckCircleIcon,
-  MoreVert as MoreVertIcon,
   Help as HelpIcon,
-  Menu as MenuIcon,
   CloudUpload as UploadIcon,
   Info as InfoIcon,
   ChevronRight as ChevronRightIcon,
@@ -53,15 +44,28 @@ import {
   ChevronLeft as ChevronLeftIcon,
   ExpandMore as ExpandMoreIcon,
   Download as DownloadIcon,
-  Adjust as TargetIcon,
 } from '@mui/icons-material';
+
+const TABLE_LABELS = {
+  Alumno: 'Estudiantes Registrados',
+  Asignatura: 'Asignaturas Registradas',
+  MatriculaPorAsignatura: 'Matrículas de Pregrado',
+  CaracterizacionEstudiante: 'Caracterizaciones Estudiantiles',
+  Programa: 'Programas de Educación Continua',
+  ResultadosPrograma: 'Resultados de Programas',
+  AlumnoExterno: 'Participantes Externos',
+  MatriculaPrograma: 'Matrículas de Programas',
+  ConvenioVcm: 'Convenios Vigentes',
+  ActividadVcm: 'Actividades Realizadas',
+  ArticulacionVcm: 'Articulaciones Docentes',
+  ProyectoInnovacion: 'Proyectos de Innovación',
+  DocenteInnovacion: 'Docentes Vinculados'
+};
 
 export const CargaDatos = () => {
   const {
     navigate,
     user,
-    logout,
-    mobileOpen,
     uploads,
     openUploadDialog,
     setOpenUploadDialog,
@@ -80,8 +84,8 @@ export const CargaDatos = () => {
     successSummary,
     filteredTemplates,
     faqData,
-    activeMenu,
-    handleDrawerToggle,
+    admisionSheets,
+    toggleAdmisionSheet,
     handleTemplateSelect,
     handleFileChange,
     handleDragOver,
@@ -110,157 +114,10 @@ export const CargaDatos = () => {
 
   const activeTemplateObj = filteredTemplates.find(t => t.id === selectedTemplate);
 
-  // =========================================================================
-  // SUB-COMPONENTE: CONTENIDO DEL SIDEBAR (REUTILIZABLE)
-  // =========================================================================
-  const sidebarContent = (
-    <Box sx={styles.drawerContent}>
-      <Box>
-        {/* Logo y Cabecera del Sidebar */}
-        <Box sx={styles.logoContainer}>
-          <Box 
-            component="img" 
-            src={logoEcas} 
-            alt="Logo ECAS" 
-            sx={{ width: 32, height: 32, objectFit: 'contain' }} 
-          />
-          <Box>
-            <Typography variant="subtitle1" sx={styles.logoTitle}>
-              PIADI
-            </Typography>
-            <Typography variant="caption" sx={styles.logoSubtitle}>
-              ECAS
-            </Typography>
-          </Box>
-        </Box>
-
-        <Divider sx={styles.divider} />
-
-        {/* Menú de Navegación */}
-        <Box sx={styles.menuContainer}>
-          {[
-            { text: 'Inicio', icon: <HomeIcon />, path: '/' },
-            { text: 'Dashboards', icon: <DashboardIcon />, path: '/dashboard' },
-            { text: 'Metas', icon: <TargetIcon />, path: '/metas' },
-            { text: 'Carga de datos', icon: <CargaIcon />, path: '/carga-datos' },
-            { text: 'Auditoría', icon: <AuditoriaIcon />, path: '/auditoria' },
-          ].filter((item) => {
-            if (item.text === 'Auditoría') {
-              return (
-                user?.role === 'Rector' || 
-                user?.role === 'Administrador' || 
-                user?.role === 'Director de Administración' ||
-                user?.role === 'Analista de Calidad' ||
-                user?.role === 'Vicerrectoria de Calidad'
-              );
-            }
-            return true;
-          }).map((item) => {
-            const isSelected = activeMenu === item.text;
-            return (
-              <Box
-                key={item.text}
-                onClick={() => {
-                  handleDrawerToggle(); // Cierra el drawer móvil si se hace click
-                  if (item.path !== '#') {
-                    navigate(item.path);
-                  }
-                }}
-                sx={styles.menuItem(isSelected)}
-              >
-                {item.icon}
-                <Typography 
-                  variant="body2" 
-                  sx={{ 
-                    fontWeight: isSelected ? 600 : 500, 
-                    noWrap: true,
-                    color: isSelected ? '#ffffff' : 'rgba(255, 255, 255, 0.7)'
-                  }}
-                >
-                  {item.text}
-                </Typography>
-              </Box>
-            );
-          })}
-        </Box>
-      </Box>
-
-      {/* Sección inferior del Sidebar */}
-      <Box sx={styles.bottomSection}>
-        {/* Botón Cerrar Sesión */}
-        <Box onClick={logout} sx={styles.logoutButton}>
-          <LogoutIcon />
-          <Typography variant="body2" sx={{ fontWeight: 500 }}>
-            Cerrar Sesión
-          </Typography>
-        </Box>
-
-        {/* Tarjeta de Usuario */}
-        <Box sx={styles.userCard}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexGrow: 1 }}>
-            <Avatar sx={styles.userAvatar}>
-              {user?.username ? user.username.split(/[. @]/).filter(Boolean).slice(0, 2).map(n => n[0].toUpperCase()).join('') : 'JD'}
-            </Avatar>
-            <Box>
-              <Typography variant="body2" sx={{ fontWeight: 600, color: '#ffffff', lineHeight: 1.2 }}>
-                {user?.username || 'John Doe'}
-              </Typography>
-              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}>
-                Ver perfil
-              </Typography>
-            </Box>
-          </Box>
-          <IconButton size="small" sx={{ color: 'rgba(255,255,255,0.6)' }}>
-            <MoreVertIcon fontSize="small" />
-          </IconButton>
-        </Box>
-      </Box>
-    </Box>
-  );
-
   return (
     <Box sx={styles.mainLayout}>
-      
-      {/* =========================================================================
-          BARRA DE NAVEGACIÓN SUPERIOR PARA MÓVILES (APPBAR)
-          ========================================================================= */}
-      <AppBar position="fixed" sx={styles.mobileAppBar}>
-        <Toolbar sx={styles.mobileToolbar}>
-          <IconButton
-            color="inherit"
-            aria-label="open drawer"
-            onClick={handleDrawerToggle}
-            sx={{ p: 0, width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          >
-            <MenuIcon sx={{ fontSize: 36 }} />
-          </IconButton>
-        </Toolbar>
-      </AppBar>
-
-      {/* =========================================================================
-          SECCIÓN 1A: SIDEBAR PERSISTENTE (ESCRITORIO)
-          ========================================================================= */}
-      <Box sx={styles.sidebar}>
-        {sidebarContent}
-      </Box>
-
-      {/* =========================================================================
-          SECCIÓN 1B: SIDEBAR TEMPORAL / DESPLEGABLE (MÓVILES Y TABLETS)
-          ========================================================================= */}
-      <Drawer
-        variant="temporary"
-        open={mobileOpen}
-        onClose={handleDrawerToggle}
-        ModalProps={{
-          keepMounted: true, // Optimiza el rendimiento de apertura en móviles.
-        }}
-        sx={{
-          display: { xs: 'block', md: 'none' },
-          '& .MuiDrawer-paper': { boxSizing: 'border-box', width: 260, border: 'none' },
-        }}
-      >
-        {sidebarContent}
-      </Drawer>
+      {/* SIDEBAR TRANSVERSAL (Escritorio + Drawer + AppBar Móvil) */}
+      <Sidebar />
 
       {/* =========================================================================
           SECCIÓN 2: ÁREA DE CONTENIDO PRINCIPAL (DERECHA / ABAJO)
@@ -268,34 +125,16 @@ export const CargaDatos = () => {
       <Box sx={styles.contentArea}>
         
         {/* Cabecera del Panel Principal */}
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
-          {/* Breadcrumbs */}
-          <Box sx={styles.breadcrumbsContainer}>
-            <Typography variant="body1" sx={{ cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }} onClick={() => navigate('/')}>
-              Inicio
-            </Typography>
-            <ChevronRightIcon sx={{ fontSize: '16px', opacity: 0.7 }} />
-            <Typography variant="body1" sx={{ color: '#1E2875', fontWeight: 600 }}>
-              Carga de datos
-            </Typography>
-          </Box>
-
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2, width: '100%' }}>
-            <Box sx={styles.panelHeader}>
-              <Box sx={styles.panelIconContainer}>
-                <CargaIcon />
-              </Box>
-              <Box>
-                <Typography variant="h5" sx={styles.panelTitle}>
-                  Carga de datos
-                </Typography>
-                <Typography variant="body2" sx={{ color: '#6B7280' }}>
-                  Sube y actualiza los indicadores institucionales mediante archivos de plantilla.
-                </Typography>
-              </Box>
-            </Box>
-          </Box>
-        </Box>
+        <Header
+          title="Carga de datos"
+          subtitle="Sube y actualiza los indicadores institucionales mediante archivos de plantilla."
+          icon={<CargaIcon />}
+          iconColor="#FFFFFF"
+          breadcrumbs={[
+            { label: 'Inicio', path: '/' },
+            { label: 'Carga de datos', path: null },
+          ]}
+        />
 
         {/* Alerta de Formato Requerido */}
         <Box sx={styles.formatAlert}>
@@ -566,6 +405,60 @@ export const CargaDatos = () => {
                 El archivo <strong>{selectedFile?.name}</strong> fue verificado y cargado sin errores en el sistema.
               </Typography>
 
+              {/* Feedback de Carga Completa o Parcial */}
+              {(() => {
+                if (!successSummary) return null;
+                const hasMatricula = Boolean(successSummary.MatriculaPorAsignatura || successSummary.Alumno || successSummary.Asignatura);
+                const hasCaracterizacion = Boolean(successSummary.CaracterizacionEstudiante);
+
+                if (hasMatricula && !hasCaracterizacion) {
+                  return (
+                    <Box sx={styles.partialSuccessBanner}>
+                      <InfoIcon sx={{ color: '#059669', fontSize: 24, flexShrink: 0 }} />
+                      <Box>
+                        <Typography sx={{ fontWeight: 700, fontSize: '13px', color: '#065F46', mb: 0.2 }}>
+                          Carga Parcial Procesada con Éxito
+                        </Typography>
+                        <Typography sx={{ fontSize: '12px', color: '#047857', lineHeight: 1.4 }}>
+                          Se procesaron los datos de la hoja <strong>Estudiantes Pregrados</strong> (Matrícula). La hoja de Caracterización fue omitida.
+                        </Typography>
+                      </Box>
+                    </Box>
+                  );
+                }
+                if (!hasMatricula && hasCaracterizacion) {
+                  return (
+                    <Box sx={styles.partialSuccessBanner}>
+                      <InfoIcon sx={{ color: '#059669', fontSize: 24, flexShrink: 0 }} />
+                      <Box>
+                        <Typography sx={{ fontWeight: 700, fontSize: '13px', color: '#065F46', mb: 0.2 }}>
+                          Carga Parcial Procesada con Éxito
+                        </Typography>
+                        <Typography sx={{ fontSize: '12px', color: '#047857', lineHeight: 1.4 }}>
+                          Se procesaron los datos de la hoja <strong>Caracterización Estudiante</strong>. La hoja de Matrícula fue omitida.
+                        </Typography>
+                      </Box>
+                    </Box>
+                  );
+                }
+                if (hasMatricula && hasCaracterizacion) {
+                  return (
+                    <Box sx={styles.partialSuccessBanner}>
+                      <CheckCircleIcon sx={{ color: '#059669', fontSize: 24, flexShrink: 0 }} />
+                      <Box>
+                        <Typography sx={{ fontWeight: 700, fontSize: '13px', color: '#065F46', mb: 0.2 }}>
+                          Carga Completa de Admisión
+                        </Typography>
+                        <Typography sx={{ fontSize: '12px', color: '#047857', lineHeight: 1.4 }}>
+                          Se verificaron y procesaron exitosamente los datos de ambas hojas (<strong>Estudiantes Pregrados</strong> y <strong>Caracterización Estudiante</strong>).
+                        </Typography>
+                      </Box>
+                    </Box>
+                  );
+                }
+                return null;
+              })()}
+
               {successSummary && (
                 <Box sx={{ width: '100%', maxWidth: '500px', bgcolor: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '8px', p: 3, textAlign: 'left', mb: 1 }}>
                   <Typography sx={{ fontWeight: 700, fontSize: '14px', color: '#334155', mb: 2, textTransform: 'uppercase', letterSpacing: '0.5px', fontFamily: "'Inter', sans-serif" }}>
@@ -575,7 +468,7 @@ export const CargaDatos = () => {
                     {Object.entries(successSummary).map(([tabla, cantidad]) => (
                       <React.Fragment key={tabla}>
                         <Typography sx={{ fontSize: '14px', color: '#475569', fontWeight: 500, fontFamily: "'Inter', sans-serif" }}>
-                          {tabla}
+                          {TABLE_LABELS[tabla] || tabla}
                         </Typography>
                         <Typography sx={{ fontSize: '14px', color: '#10B981', fontWeight: 700, textAlign: 'right', fontFamily: "'Inter', sans-serif" }}>
                           +{cantidad} filas
@@ -674,19 +567,60 @@ export const CargaDatos = () => {
                   <Collapse in={showMetadataHelp}>
                     <Box sx={{ p: 2, pt: 0 }}>
                       <Divider sx={{ mb: 2 }} />
+
                       <Grid container spacing={1.5}>
-                        {selectedTemplateMetadata.hojas.map((hoja, hIdx) => (
-                          <Grid item xs={12} sm={6} key={hIdx}>
-                            <Box sx={{ bgcolor: '#ffffff', p: 1.5, borderRadius: '6px', border: '1px solid #E2E8F0', height: '100%' }}>
-                              <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#1DC2A0', mb: 0.5, display: 'flex', alignItems: 'center', gap: 0.5, fontSize: '12px' }}>
-                                📁 Hoja: {hoja.nombre}
-                              </Typography>
-                              <Typography variant="body2" sx={{ color: '#475569', fontSize: '11.5px', lineHeight: 1.45 }}>
-                                <strong>Columnas obligatorias:</strong> {hoja.columnas.join(', ')}
-                              </Typography>
-                            </Box>
-                          </Grid>
-                        ))}
+                        {selectedTemplateMetadata.hojas.map((hoja, hIdx) => {
+                          const isEnabled = hoja.enabled;
+
+                          return (
+                            <Grid item xs={12} sm={6} key={hIdx}>
+                              <Box sx={{ 
+                                bgcolor: '#ffffff', 
+                                p: 1.5, 
+                                borderRadius: '6px', 
+                                border: '1px solid #E2E8F0', 
+                                height: '100%',
+                                opacity: isEnabled ? 1 : 0.6,
+                                transition: 'all 0.2s ease-in-out'
+                              }}>
+                                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5, gap: 1 }}>
+                                  <Typography variant="subtitle2" sx={{ fontWeight: 700, color: isEnabled ? '#1DC2A0' : '#94A3B8', display: 'flex', alignItems: 'center', gap: 0.5, fontSize: '12px' }}>
+                                    📁 Hoja: {hoja.nombre}
+                                    {hoja.isOptional && (
+                                      <Box component="span" sx={styles.sheetBadgeOptional}>
+                                        Opcional
+                                      </Box>
+                                    )}
+                                  </Typography>
+
+                                  {hoja.isAdmision && (
+                                    <Button
+                                      size="small"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        toggleAdmisionSheet(hoja.key);
+                                      }}
+                                      startIcon={isEnabled ? <CheckCircleIcon sx={{ fontSize: 13 }} /> : <CloseIcon sx={{ fontSize: 13 }} />}
+                                      sx={styles.sheetToggleBtn(isEnabled)}
+                                    >
+                                      {isEnabled ? 'Incluida' : 'Omitida'}
+                                    </Button>
+                                  )}
+                                </Box>
+
+                                {isEnabled ? (
+                                  <Typography variant="body2" sx={{ color: '#475569', fontSize: '11.5px', lineHeight: 1.45 }}>
+                                    <strong>Columnas obligatorias:</strong> {hoja.columnas.join(', ')}
+                                  </Typography>
+                                ) : (
+                                  <Typography variant="body2" sx={{ color: '#94A3B8', fontSize: '11.5px', fontStyle: 'italic', lineHeight: 1.45 }}>
+                                    ✕ Esta hoja será omitida y no es requerida en tu archivo Excel.
+                                  </Typography>
+                                )}
+                              </Box>
+                            </Grid>
+                          );
+                        })}
                       </Grid>
                     </Box>
                   </Collapse>
@@ -802,6 +736,8 @@ export const CargaDatos = () => {
                             {detail.fila && <> | <strong>Fila:</strong> {detail.fila}</>}
                             {detail.columna && <> | <strong>Columna:</strong> {detail.columna}</>}
                             {detail.celda && <> | <strong>Celda:</strong> {detail.celda}</>}
+                            {detail.valor && <> | <strong>Valor recibido:</strong> {detail.valor}</>}
+                            {detail.esperado && <> | <strong>Formato esperado:</strong> {detail.esperado}</>}
                             {' '}| <strong>Fallo:</strong> {detail.message}
                           </Typography>
                         ))}

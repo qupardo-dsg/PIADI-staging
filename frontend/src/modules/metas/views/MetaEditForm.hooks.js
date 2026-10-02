@@ -6,6 +6,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../auth';
 import { getDepartments, getDepartmentKpis, updateMeta, getMetaById } from '../../../services/piadiApi';
+import { isRectoria } from '../metaAccess';
 
 export const useMetaEditForm = () => {
   const { id } = useParams();
@@ -43,6 +44,7 @@ export const useMetaEditForm = () => {
   const [showSaveAlert, setShowSaveAlert] = useState(false);
   const [showSuccessAlert, setShowSuccessAlert] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
+  const [successDesc, setSuccessDesc] = useState('');
 
   // Modals Visibility
   const [metricModalOpen, setMetricModalOpen] = useState(false);
@@ -61,20 +63,29 @@ export const useMetaEditForm = () => {
   const [metricUpperLimit, setMetricUpperLimit] = useState('');
   const [metricModalError, setMetricModalError] = useState(null);
 
-  // Load departments from database on mount
+  // Load departments from database on mount and filter by role
   useEffect(() => {
     const fetchDepts = async () => {
       try {
         const res = await getDepartments();
         if (res.success && Array.isArray(res.data)) {
-          setDepartmentsList(res.data);
+          if (isRectoria(user)) {
+            setDepartmentsList(res.data);
+          } else {
+            if (user?.departmentId) {
+              const filtered = res.data.filter(d => d.key === user.departmentId);
+              setDepartmentsList(filtered);
+            } else {
+              setDepartmentsList([]);
+            }
+          }
         }
       } catch (err) {
         console.error('Error fetching departments:', err);
       }
     };
     fetchDepts();
-  }, []);
+  }, [user]);
 
   // Load KPIs whenever the selected department changes
   useEffect(() => {
@@ -106,6 +117,10 @@ export const useMetaEditForm = () => {
         const res = await getMetaById(id);
         if (res.success && res.data) {
           const m = res.data;
+          if (m.permissions?.canEdit !== true) {
+            navigate('/metas', { replace: true });
+            return;
+          }
           setNombre(m.nombre || '');
           setDepartamento(m.departmentId || '');
           setComportamiento(m.comportamiento || 'no-debe-superar');
@@ -116,7 +131,7 @@ export const useMetaEditForm = () => {
           setInicio(formatToInputDate(m.fechaInicio || m.inicio));
           setLimite(formatToInputDate(m.fechaLimite || m.limite));
           setPrioridad(m.prioridad || 'media');
-          setCreadaPor(`Usuario ID: ${m.creatorId || 'N/A'}`);
+          setCreadaPor(user?.username || 'Jane Doe');
           
           if (Array.isArray(m.metrics)) {
             const mappedMetrics = m.metrics.map((metric, index) => ({
@@ -138,7 +153,7 @@ export const useMetaEditForm = () => {
       }
     };
     fetchMeta();
-  }, [id]);
+  }, [id, navigate, user]);
 
   // Compute Total Metrics Aporte Percentage
   const totalAporte = useMemo(() => {
@@ -313,10 +328,11 @@ export const useMetaEditForm = () => {
       await updateMeta(id, payload);
 
       setSuccessMsg('Meta guardada con éxito');
+      setSuccessDesc('La meta se ha editado correctamente.');
       setShowSuccessAlert(true);
     } catch (err) {
       console.error('Error saving meta:', err);
-      alert('Hubo un error al guardar la meta en el servidor.');
+      alert('Hubo un error al guardar la meta.');
     }
   };
 
@@ -326,7 +342,7 @@ export const useMetaEditForm = () => {
   };
 
   const filteredDepartments = useMemo(() => {
-    if (user?.role === 'Rector') {
+    if (isRectoria(user)) {
       return departmentsList;
     }
     return departmentsList.filter(d => d.key !== 'institucional');
@@ -364,6 +380,7 @@ export const useMetaEditForm = () => {
     showSuccessAlert,
     setShowSuccessAlert,
     successMsg,
+    successDesc,
     metricModalOpen,
     setMetricModalOpen,
     previewModalOpen,

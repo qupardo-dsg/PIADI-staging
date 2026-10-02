@@ -1,4 +1,4 @@
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 function getAuthHeaders() {
   const token = sessionStorage.getItem('auth_token');
@@ -43,6 +43,9 @@ export const getIndicatorSeries = (key, params) =>
 export const getIndicatorBreakdown = (key, params) =>
   apiFetch(`/api/indicators/${key}/breakdown${buildParams(params)}`);
 
+export const getIndicatorDetail = (key, params) =>
+  apiFetch(`/api/indicators/${key}/detail${buildParams(params)}`);
+
 async function apiMutate(path, method, body) {
   const res = await fetch(`${API_URL}${path}`, {
     method,
@@ -62,3 +65,6 @@ export const updateMeta = (id, body) => apiMutate(`/api/metas/${id}`, 'PUT', bod
 export const getMetas = (params) => apiFetch(`/api/metas${buildParams(params)}`);
 export const getMetaById = (id) => apiFetch(`/api/metas/${id}`);
 export const deleteMeta = (id) => apiMutate(`/api/metas/${id}`, 'DELETE');
+
+export const getPlantillas = () => apiFetch('/api/plantillas');
+export const getPlantillaById = (id) => apiFetch(`/api/plantillas/${id}`);

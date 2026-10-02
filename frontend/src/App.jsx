@@ -38,14 +38,11 @@ import { LoginPage, useAuth } from './modules/auth';
 import { LandingPage } from './modules/landing_page';
 import { CargaDatos, RepositorioArchivos } from './modules/carga_datos';
 import { Auditoria } from './modules/auditoria';
-import { CentralDashboards, DashboardEducacionContinua, DashboardVcM } from './modules/central_dashboards';
+import { CentralDashboards, DashboardEducacionContinua, DashboardVcM, DashboardInnovacion, DashboardAdmision } from './modules/central_dashboards';
 import { VisualizacionMetas, MetaForm, MetaEditForm } from './modules/metas';
+import { Reportes } from './modules/reportes';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-
-const API_URL = import.meta.env.VITE_API_URL || 
-  (window.location.hostname === 'localhost' 
-    ? 'http://localhost:5000' 
-    : `http://${window.location.hostname}:5000`);
+import { API_URL } from './services/piadiApi';
 
 // Custom Dark Theme
 const darkTheme = createTheme({
@@ -490,6 +487,32 @@ function App() {
             />
 
             {/* 
+               RUTA: /dashboard-innovacion
+               Muestra el dashboard específico de Innovación.
+            */}
+            <Route 
+              path="/dashboard-innovacion" 
+              element={
+                <ProtectedRoute>
+                  <DashboardInnovacion />
+                </ProtectedRoute>
+              } 
+            />
+
+            {/* 
+               RUTA: /dashboard-admision
+               Muestra el dashboard específico de Admisión y Registro Académico.
+            */}
+            <Route 
+              path="/dashboard-admision" 
+              element={
+                <ProtectedRoute>
+                  <DashboardAdmision />
+                </ProtectedRoute>
+              } 
+            />
+
+            {/* 
                RUTA: /dashboard-crud
                Conserva la interfaz CRUD anterior de PostgreSQL y monitoreo técnico.
             */}
@@ -557,6 +580,19 @@ function App() {
               element={
                 <ProtectedRoute>
                   <MetaEditForm />
+                </ProtectedRoute>
+              } 
+            />
+
+            {/* 
+              RUTA: /reportes
+              Ruta protegida para la vista del Módulo de Reportes.
+            */}
+            <Route 
+              path="/reportes" 
+              element={
+                <ProtectedRoute>
+                  <Reportes />
                 </ProtectedRoute>
               } 
             />

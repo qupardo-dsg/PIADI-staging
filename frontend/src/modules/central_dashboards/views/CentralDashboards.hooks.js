@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../auth';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+import { API_URL } from '../../../services/piadiApi';
 
 export const useCentralDashboards = () => {
   const navigate = useNavigate();
@@ -24,8 +23,8 @@ export const useCentralDashboards = () => {
         const result = await response.json();
         if (result.success && Array.isArray(result.data)) {
           const filtered = result.data.filter(d => 
-            d.departmentId === 'educacion_continua' || d.departmentId === 'vinculacion_medio' ||
-            d.key === 'educacion_continua' || d.key === 'vinculacion_medio'
+            d.departmentId === 'educacion_continua' || d.departmentId === 'vinculacion_medio' || d.departmentId === 'innovacion' || d.departmentId === 'admision' ||
+            d.key === 'educacion_continua' || d.key === 'vinculacion_medio' || d.key === 'innovacion' || d.key === 'admision'
           );
           setDepartments(filtered);
         } else {
@@ -80,6 +79,10 @@ export const useCentralDashboards = () => {
       navigate('/dashboard-educacion-continua');
     } else if (id === 'vinculacion_medio') {
       navigate('/dashboard-vcm');
+    } else if (id === 'innovacion') {
+      navigate('/dashboard-innovacion');
+    } else if (id === 'admision') {
+      navigate('/dashboard-admision');
     } else {
       navigate('/dashboard-crud');
     }
