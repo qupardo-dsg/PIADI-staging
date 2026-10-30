@@ -15,6 +15,7 @@ import {
   Alert,
   Select,
   MenuItem,
+  Tooltip,
 } from '@mui/material';
 import {
   Adjust as TargetIcon,
@@ -31,6 +32,9 @@ import {
   TrendingUp as TrendingUpIcon,
   TrendingDown as TrendingDownIcon,
   SwapHoriz as RangeIcon,
+  Lock as LockIcon,
+  Drafts as DraftsIcon,
+  Send as SendIcon,
 } from '@mui/icons-material';
 
 export const MetaEditForm = () => {
@@ -55,6 +59,8 @@ export const MetaEditForm = () => {
     errors,
     showSaveAlert,
     setShowSaveAlert,
+    metricLimitAlert,
+    setMetricLimitAlert,
     metricModalOpen,
     setMetricModalOpen,
     previewModalOpen,
@@ -85,7 +91,15 @@ export const MetaEditForm = () => {
     handleOpenEditMetric,
     handleSaveMetric,
     handleDeleteMetric,
+    handleSaveDraft,
+    handlePublishMeta,
     handleSaveMeta,
+    handleCloseMeta,
+    closeConfirmOpen,
+    setCloseConfirmOpen,
+    isClosing,
+    lifecycleStatus,
+    isReadOnly,
     handleOpenPreview,
     departmentsList,
     kpisList,
@@ -132,6 +146,24 @@ export const MetaEditForm = () => {
 
         {/* Form Container */}
         <Box sx={styles.formCard}>
+          {/* Status Banner */}
+          {lifecycleStatus === 'BORRADOR' && (
+            <Box sx={styles.statusBanner('BORRADOR')}>
+              <DraftsIcon sx={{ fontSize: 20 }} />
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                Esta meta se encuentra en estado <strong>BORRADOR</strong>. Puedes guardar cambios parciales o publicarla cuando sus métricas sumen exactamente 100%.
+              </Typography>
+            </Box>
+          )}
+
+          {lifecycleStatus === 'CERRADA' && (
+            <Box sx={styles.statusBanner('CERRADA')}>
+              <LockIcon sx={{ fontSize: 20 }} />
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                Esta meta se encuentra <strong>CERRADA</strong>. Sus resultados finales están congelados y se muestra en modo de solo lectura.
+              </Typography>
+            </Box>
+          )}
           {/* General Save Failure Alert */}
           {showSaveAlert && (
             <Box sx={styles.saveAlert}>
@@ -160,8 +192,9 @@ export const MetaEditForm = () => {
                   id="campo-nombre" 
                   placeholder="Mas de 3 nuevos convenios..."
                   value={nombre}
+                  disabled={isReadOnly}
                   onChange={(e) => setNombre(e.target.value)}
-                  sx={styles.input(errors.nombre)}
+                  sx={{ ...styles.input(errors.nombre), ...(isReadOnly ? { bgcolor: '#f9fafb', color: '#64748b', cursor: 'not-allowed' } : {}) }}
                 />
                 {errors.nombre && <Typography sx={styles.fieldError}>El nombre es obligatorio</Typography>}
               </Box>
@@ -174,6 +207,7 @@ export const MetaEditForm = () => {
                 <Select
                   id="campo-departamento"
                   value={departamento}
+                  disabled={isReadOnly}
                   onChange={(e) => setDepartamento(e.target.value)}
                   size="small"
                   displayEmpty
@@ -187,23 +221,23 @@ export const MetaEditForm = () => {
                         bgcolor: '#ffffff !important',
                         backgroundColor: '#ffffff !important',
                         borderRadius: '8px',
-                        boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
-                        border: '1.5px solid #000000',
+                        boxShadow: '0 10px 25px rgba(0,0,0,0.1)',
+                        border: '1px solid #E5E7EB',
                         mt: 0.5,
                         '& .MuiMenuItem-root': {
                           fontSize: '13.5px',
-                          color: '#000000 !important',
+                          color: '#111827 !important',
                           fontWeight: 500,
                           whiteSpace: 'normal',
                           wordBreak: 'break-word',
                           py: 1,
                           '&:hover': {
                             bgcolor: '#f3f4f6 !important',
-                            color: '#000000 !important',
+                            color: '#111827 !important',
                           },
                           '&.Mui-selected': {
                             bgcolor: '#e5e7eb !important',
-                            color: '#000000 !important',
+                            color: '#111827 !important',
                             fontWeight: 700,
                             '&:hover': {
                               bgcolor: '#d1d5db !important',
@@ -235,34 +269,36 @@ export const MetaEditForm = () => {
                     bgcolor: '#ffffff',
                     borderRadius: '8px',
                     fontSize: '14px',
-                    color: '#000000',
+                    color: '#111827',
                     height: '42px',
-                    border: errors.departamento ? '1px solid #dc2626' : '1px solid #000000',
+                    border: errors.departamento ? '1px solid #dc2626' : '1px solid #D1D5DB',
+                    transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
                     '& .MuiOutlinedInput-notchedOutline': {
                       border: 'none',
                     },
                     '&:hover': {
-                      borderColor: errors.departamento ? '#dc2626' : '#000000',
+                      borderColor: errors.departamento ? '#dc2626' : '#9CA3AF',
                     },
                     '&.Mui-focused': {
-                      boxShadow: errors.departamento ? '0 0 0 2px rgba(220, 38, 38, 0.2)' : '0 0 0 2px rgba(0, 0, 0, 0.2)',
+                      borderColor: errors.departamento ? '#dc2626' : '#0F4AFF',
+                      boxShadow: errors.departamento ? '0 0 0 2px rgba(220, 38, 38, 0.2)' : '0 0 0 2px rgba(15, 74, 255, 0.25)',
                     },
                     '& .MuiSelect-select': {
                       py: '10px',
                       px: '12px',
-                      color: '#000000 !important',
+                      color: '#111827 !important',
                       fontWeight: 500,
                     },
                     '& .MuiSvgIcon-root': {
-                      color: '#000000 !important',
+                      color: '#6B7280 !important',
                     },
                   }}
                 >
-                  <MenuItem value="" sx={{ color: '#000000 !important', bgcolor: '#ffffff', fontWeight: 500 }}>
+                  <MenuItem value="" sx={{ color: '#111827 !important', bgcolor: '#ffffff', fontWeight: 500 }}>
                     Selecciona una dirección
                   </MenuItem>
                   {departmentsList.map((dept) => (
-                    <MenuItem key={dept.key} value={dept.key} sx={{ color: '#000000 !important', bgcolor: '#ffffff' }}>
+                    <MenuItem key={dept.key} value={dept.key} sx={{ color: '#111827 !important', bgcolor: '#ffffff' }}>
                       {dept.name}
                     </MenuItem>
                   ))}
@@ -278,6 +314,7 @@ export const MetaEditForm = () => {
                 <Select
                   id="campo-comportamiento"
                   value={comportamiento}
+                  disabled={isReadOnly}
                   onChange={(e) => setComportamiento(e.target.value)}
                   size="small"
                   displayEmpty
@@ -291,23 +328,23 @@ export const MetaEditForm = () => {
                         bgcolor: '#ffffff !important',
                         backgroundColor: '#ffffff !important',
                         borderRadius: '8px',
-                        boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
-                        border: '1.5px solid #000000',
+                        boxShadow: '0 10px 25px rgba(0,0,0,0.1)',
+                        border: '1px solid #E5E7EB',
                         mt: 0.5,
                         '& .MuiMenuItem-root': {
                           fontSize: '13.5px',
-                          color: '#000000 !important',
+                          color: '#111827 !important',
                           fontWeight: 500,
                           whiteSpace: 'normal',
                           wordBreak: 'break-word',
                           py: 1,
                           '&:hover': {
                             bgcolor: '#f3f4f6 !important',
-                            color: '#000000 !important',
+                            color: '#111827 !important',
                           },
                           '&.Mui-selected': {
                             bgcolor: '#e5e7eb !important',
-                            color: '#000000 !important',
+                            color: '#111827 !important',
                             fontWeight: 700,
                             '&:hover': {
                               bgcolor: '#d1d5db !important',
@@ -339,36 +376,38 @@ export const MetaEditForm = () => {
                     bgcolor: '#ffffff',
                     borderRadius: '8px',
                     fontSize: '14px',
-                    color: '#000000',
+                    color: '#111827',
                     height: '42px',
-                    border: '1px solid #000000',
+                    border: '1px solid #D1D5DB',
+                    transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
                     '& .MuiOutlinedInput-notchedOutline': {
                       border: 'none',
                     },
                     '&:hover': {
-                      borderColor: '#000000',
+                      borderColor: '#9CA3AF',
                     },
                     '&.Mui-focused': {
-                      boxShadow: '0 0 0 2px rgba(0, 0, 0, 0.2)',
+                      borderColor: '#0F4AFF',
+                      boxShadow: '0 0 0 2px rgba(15, 74, 255, 0.25)',
                     },
                     '& .MuiSelect-select': {
                       py: '10px',
                       px: '12px',
-                      color: '#000000 !important',
+                      color: '#111827 !important',
                       fontWeight: 500,
                     },
                     '& .MuiSvgIcon-root': {
-                      color: '#000000 !important',
+                      color: '#6B7280 !important',
                     },
                   }}
                 >
-                  <MenuItem value="no-debe-superar" sx={{ color: '#000000 !important', bgcolor: '#ffffff' }}>
+                  <MenuItem value="no-debe-superar" sx={{ color: '#111827 !important', bgcolor: '#ffffff' }}>
                     No debe superar
                   </MenuItem>
-                  <MenuItem value="debe-alcanzar-o-superar" sx={{ color: '#000000 !important', bgcolor: '#ffffff' }}>
+                  <MenuItem value="debe-alcanzar-o-superar" sx={{ color: '#111827 !important', bgcolor: '#ffffff' }}>
                     Debe alcanzar o superar
                   </MenuItem>
-                  <MenuItem value="debe-mantenerse-en-rango" sx={{ color: '#000000 !important', bgcolor: '#ffffff' }}>
+                  <MenuItem value="debe-mantenerse-en-rango" sx={{ color: '#111827 !important', bgcolor: '#ffffff' }}>
                     Debe mantenerse en el rango
                   </MenuItem>
                 </Select>
@@ -384,8 +423,9 @@ export const MetaEditForm = () => {
                   type="date" 
                   id="campo-inicio"
                   value={inicio}
+                  disabled={isReadOnly}
                   onChange={(e) => setInicio(e.target.value)}
-                  sx={{ ...styles.input(errors.inicio), paddingRight: '12px' }}
+                  sx={{ ...styles.input(errors.inicio), paddingRight: '12px', ...(isReadOnly ? { bgcolor: '#f9fafb', color: '#64748b', cursor: 'not-allowed' } : {}) }}
                 />
                 {errors.inicio && <Typography sx={styles.fieldError}>Selecciona la fecha de inicio</Typography>}
               </Box>
@@ -400,9 +440,10 @@ export const MetaEditForm = () => {
                   type="date" 
                   id="campo-limite"
                   value={limite}
+                  disabled={isReadOnly}
                   onChange={(e) => setLimite(e.target.value)}
                   min={inicio || undefined}
-                  sx={{ ...styles.input(errors.limite), paddingRight: '12px' }}
+                  sx={{ ...styles.input(errors.limite), paddingRight: '12px', ...(isReadOnly ? { bgcolor: '#f9fafb', color: '#64748b', cursor: 'not-allowed' } : {}) }}
                 />
                 {errors.limite && (
                   <Typography sx={styles.fieldError}>
@@ -423,8 +464,9 @@ export const MetaEditForm = () => {
                     component="button"
                     type="button"
                     key={prio}
-                    onClick={() => setPrioridad(prio)}
-                    sx={styles.prioridadChip(prio, prioridad === prio)}
+                    disabled={isReadOnly}
+                    onClick={() => !isReadOnly && setPrioridad(prio)}
+                    sx={{ ...styles.prioridadChip(prio, prioridad === prio), ...(isReadOnly ? { cursor: 'not-allowed', opacity: 0.7 } : {}) }}
                   >
                     <span className="dot" />
                     {prio === 'alta' ? 'Alta' : prio === 'media' ? 'Media' : 'Baja'}
@@ -455,23 +497,59 @@ export const MetaEditForm = () => {
                 </Box>
 
                 {/* Add Metric Trigger Button */}
-                <Box
-                  component="button"
-                  type="button"
-                  onClick={handleOpenAddMetric}
-                  sx={styles.btnAnadirMetrica}
-                >
-                  <AddIcon sx={{ fontSize: 16 }} />
-                  Añadir métrica
-                </Box>
+                {!isReadOnly && (
+                  <Tooltip 
+                    title={totalAporte >= 100 ? "La suma de aportes ya alcanza el 100%. No es posible añadir más métricas." : ""}
+                    arrow
+                    placement="top"
+                  >
+                    <span>
+                      <Box
+                        component="button"
+                        type="button"
+                        onClick={handleOpenAddMetric}
+                        disabled={totalAporte >= 100}
+                        sx={styles.btnAnadirMetrica}
+                      >
+                        <AddIcon sx={{ fontSize: 16 }} />
+                        Añadir métrica
+                      </Box>
+                    </span>
+                  </Tooltip>
+                )}
               </Box>
 
-              {/* Metrics Warning */}
-              {metricas.length === 0 && (
+              {/* Alerta de 100% alcanzado al intentar añadir métrica */}
+              {metricLimitAlert && (
+                <Alert 
+                  severity="warning" 
+                  onClose={() => setMetricLimitAlert('')}
+                  sx={{ mb: 2, borderRadius: 2, fontSize: '13px' }}
+                >
+                  {metricLimitAlert}
+                </Alert>
+              )}
+
+              {/* Metrics Warning / Maxed Notice */}
+              {metricas.length === 0 ? (
                 <Box sx={styles.metricasWarn}>
                   <InfoIcon sx={{ fontSize: 16 }} />
                   <Typography variant="body2" sx={{ fontWeight: 500 }}>
                     Agrega al menos una métrica y asegura que sumen 100% (Actual: {totalAporte}%)
+                  </Typography>
+                </Box>
+              ) : totalAporte >= 100 ? (
+                <Box sx={styles.metricasMaxed}>
+                  <CheckIcon sx={{ fontSize: 16, color: '#16a34a' }} />
+                  <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                    Se ha cubierto el 100% del aporte ponderado de la meta. Para agregar una nueva métrica, primero reduce o edita el porcentaje de las existentes.
+                  </Typography>
+                </Box>
+              ) : (
+                <Box sx={styles.metricasWarn}>
+                  <InfoIcon sx={{ fontSize: 16 }} />
+                  <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                    Aún falta asignar un {100 - totalAporte}% para completar el 100% requerido (Actual: {totalAporte}%).
                   </Typography>
                 </Box>
               )}
@@ -515,22 +593,26 @@ export const MetaEditForm = () => {
                             )}
                           </Box>
                           <Box component="td" sx={{ ...styles.td, textAlign: 'right' }}>
-                            <Box sx={styles.actionBtns}>
-                              <IconButton 
-                                onClick={() => handleOpenEditMetric(index)}
-                                sx={{ color: '#0F4AFF', '&:hover': { bgcolor: '#eff6ff' } }}
-                                size="small"
-                              >
-                                <EditIcon sx={{ fontSize: 16 }} />
-                              </IconButton>
-                              <IconButton 
-                                onClick={() => handleDeleteMetric(index)}
-                                sx={{ color: '#EF4444', '&:hover': { bgcolor: '#fef2f2' } }}
-                                size="small"
-                              >
-                                <DeleteIcon sx={{ fontSize: 16 }} />
-                              </IconButton>
-                            </Box>
+                            {!isReadOnly ? (
+                              <Box sx={styles.actionBtns}>
+                                <IconButton 
+                                  onClick={() => handleOpenEditMetric(index)}
+                                  sx={{ color: '#0F4AFF', '&:hover': { bgcolor: '#eff6ff' } }}
+                                  size="small"
+                                >
+                                  <EditIcon sx={{ fontSize: 16 }} />
+                                </IconButton>
+                                <IconButton 
+                                  onClick={() => handleDeleteMetric(index)}
+                                  sx={{ color: '#EF4444', '&:hover': { bgcolor: '#fef2f2' } }}
+                                  size="small"
+                                >
+                                  <DeleteIcon sx={{ fontSize: 16 }} />
+                                </IconButton>
+                              </Box>
+                            ) : (
+                              <Typography sx={{ color: '#94A3B8', fontSize: '13px' }}>-</Typography>
+                            )}
                           </Box>
                         </Box>
                       ))}
@@ -580,24 +662,66 @@ export const MetaEditForm = () => {
               onClick={() => navigate('/metas')}
               sx={styles.btnCancelar}
             >
-              Cancelar
+              {isReadOnly ? 'Volver a Metas' : 'Cancelar'}
             </Box>
-            <Box 
-              component="button" 
-              onClick={handleOpenPreview}
-              sx={styles.btnPreview}
-            >
-              <PreviewIcon sx={{ fontSize: 16 }} />
-              Vista previa
-            </Box>
-            <Box 
-              component="button" 
-              onClick={handleSaveMeta}
-              sx={styles.btnGuardar}
-            >
-              <SaveIcon sx={{ fontSize: 16 }} />
-              Guardar meta
-            </Box>
+
+            {!isReadOnly && lifecycleStatus === 'BORRADOR' && (
+              <>
+                <Box 
+                  component="button" 
+                  onClick={handleSaveDraft}
+                  sx={styles.btnBorrador}
+                >
+                  <DraftsIcon sx={{ fontSize: 16 }} />
+                  Guardar borrador
+                </Box>
+                <Box 
+                  component="button" 
+                  onClick={handleOpenPreview}
+                  sx={styles.btnPreview}
+                >
+                  <PreviewIcon sx={{ fontSize: 16 }} />
+                  Vista previa
+                </Box>
+                <Box 
+                  component="button" 
+                  onClick={handlePublishMeta}
+                  sx={styles.btnGuardar}
+                >
+                  <SendIcon sx={{ fontSize: 16 }} />
+                  Publicar meta
+                </Box>
+              </>
+            )}
+
+            {!isReadOnly && lifecycleStatus === 'ACTIVA' && (
+              <>
+                <Box 
+                  component="button" 
+                  onClick={() => setCloseConfirmOpen(true)}
+                  sx={styles.btnCerrar}
+                >
+                  <LockIcon sx={{ fontSize: 16 }} />
+                  Cerrar meta
+                </Box>
+                <Box 
+                  component="button" 
+                  onClick={handleOpenPreview}
+                  sx={styles.btnPreview}
+                >
+                  <PreviewIcon sx={{ fontSize: 16 }} />
+                  Vista previa
+                </Box>
+                <Box 
+                  component="button" 
+                  onClick={handleSaveMeta}
+                  sx={styles.btnGuardar}
+                >
+                  <SaveIcon sx={{ fontSize: 16 }} />
+                  Guardar cambios
+                </Box>
+              </>
+            )}
           </Box>
         </Box>
       </Box>
@@ -1054,6 +1178,51 @@ export const MetaEditForm = () => {
             Entendido
           </Button>
         </DialogContent>
+      </Dialog>
+
+      {/* Confirmation Dialog: Cerrar Meta */}
+      <Dialog
+        open={closeConfirmOpen}
+        onClose={() => !isClosing && setCloseConfirmOpen(false)}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 3, p: 2 } }}
+      >
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, fontWeight: 700, color: '#991B1B', p: 0, mb: 1.5 }}>
+          <LockIcon sx={{ color: '#E11D48' }} />
+          ¿Cerrar esta meta?
+        </DialogTitle>
+        <DialogContent sx={{ p: 0, mb: 2 }}>
+          <Typography variant="body2" sx={{ color: '#475569', mb: 1 }}>
+            Al cerrar la meta, se congelará su resultado final en un <strong>snapshot inmutable</strong>.
+          </Typography>
+          <Typography variant="body2" sx={{ color: '#64748B', fontSize: '13px' }}>
+            ⚠️ Una vez cerrada, la meta no podrá ser editada ni eliminada, y su progreso ya no cambiará con nuevas cargas de datos.
+          </Typography>
+        </DialogContent>
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1.5 }}>
+          <Button
+            onClick={() => setCloseConfirmOpen(false)}
+            disabled={isClosing}
+            variant="outlined"
+            sx={{ textTransform: 'none', borderRadius: 2 }}
+          >
+            Cancelar
+          </Button>
+          <Button
+            onClick={handleCloseMeta}
+            disabled={isClosing}
+            variant="contained"
+            sx={{
+              textTransform: 'none',
+              bgcolor: '#E11D48',
+              '&:hover': { bgcolor: '#BE123C' },
+              borderRadius: 2
+            }}
+          >
+            {isClosing ? 'Cerrando...' : 'Sí, cerrar meta'}
+          </Button>
+        </Box>
       </Dialog>
     </Box>
   );

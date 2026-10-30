@@ -13,6 +13,7 @@ export const DEPARTMENT_COLORS = {
   educacion_continua: '#46D19F',
   vinculacion_medio: '#E27800',
   innovacion: '#0E86B8',
+  desarrollo_curricular: '#175696',
   admision: '#1E2875',
 };
 
@@ -24,7 +25,6 @@ export const useLandingPage = () => {
   
   // Estado para controlar la apertura del menú lateral en móviles
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [openHelpDialog, setOpenHelpDialog] = useState(false); // Estado para abrir el Centro de Ayuda
   const [departments, setDepartments] = useState([]);
   const [prevYearDepartments, setPrevYearDepartments] = useState([]);
   const [activeYear, setActiveYear] = useState(new Date().getFullYear());
@@ -32,6 +32,7 @@ export const useLandingPage = () => {
     educacion_continua: [],
     vinculacion_medio: [],
     innovacion: [],
+    desarrollo_curricular: [],
     admision: []
   });
   const [allMetas, setAllMetas] = useState([]);
@@ -46,17 +47,20 @@ export const useLandingPage = () => {
       getDepartmentFilters('educacion_continua').catch(() => null),
       getDepartmentFilters('vinculacion_medio').catch(() => null),
       getDepartmentFilters('innovacion').catch(() => null),
+      getDepartmentFilters('desarrollo_curricular').catch(() => null),
       getDepartmentFilters('admision').catch(() => null)
     ])
-      .then(([resEc, resVcm, resInno, resAdm]) => {
+      .then(([resEc, resVcm, resInno, resDc, resAdm]) => {
         const ecYears = resEc?.success ? (resEc.data?.filters?.years ?? []) : [];
         const vcmYears = resVcm?.success ? (resVcm.data?.filters?.years ?? []) : [];
         const innoYears = resInno?.success ? (resInno.data?.filters?.years ?? []) : [];
+        const dcYears = resDc?.success ? (resDc.data?.filters?.years ?? []) : [];
         const admYears = resAdm?.success ? (resAdm.data?.filters?.years ?? []) : [];
         setDeptYearsMap({
           educacion_continua: ecYears.map(Number),
           vinculacion_medio: vcmYears.map(Number),
           innovacion: innoYears.map(Number),
+          desarrollo_curricular: dcYears.map(Number),
           admision: admYears.map(Number)
         });
       })
@@ -113,17 +117,25 @@ export const useLandingPage = () => {
       getIndicatorBreakdown('nuevos_vs_antiguos', { department: 'admision', year: String(activeYear - 1), groupBy: 'nuevoAntiguo' }).catch(() => null)
     ])
       .then(([resActive, resPrev, resVia, resNuevos, resPrevNuevos]) => {
-        const allowedDepts = ['educacion_continua', 'vinculacion_medio', 'innovacion', 'admision'];
+        const allowedDepts = ['educacion_continua', 'vinculacion_medio', 'innovacion', 'desarrollo_curricular', 'admision'];
         if (resActive?.success && resActive.data) {
-          const filteredActive = (resActive.data.departments ?? []).filter(d => 
-            allowedDepts.includes(d.departmentId) || allowedDepts.includes(d.key)
-          );
+          const filteredActive = (resActive.data.departments ?? [])
+            .filter(d => allowedDepts.includes(d.departmentId) || allowedDepts.includes(d.key))
+            .sort((a, b) => {
+              const keyA = a.departmentId || a.key;
+              const keyB = b.departmentId || b.key;
+              return allowedDepts.indexOf(keyA) - allowedDepts.indexOf(keyB);
+            });
           setDepartments(filteredActive);
         }
         if (resPrev?.success && resPrev.data) {
-          const filteredPrev = (resPrev.data.departments ?? []).filter(d => 
-            allowedDepts.includes(d.departmentId) || allowedDepts.includes(d.key)
-          );
+          const filteredPrev = (resPrev.data.departments ?? [])
+            .filter(d => allowedDepts.includes(d.departmentId) || allowedDepts.includes(d.key))
+            .sort((a, b) => {
+              const keyA = a.departmentId || a.key;
+              const keyB = b.departmentId || b.key;
+              return allowedDepts.indexOf(keyA) - allowedDepts.indexOf(keyB);
+            });
           setPrevYearDepartments(filteredPrev);
         }
         setAdmisionBreakdowns({
@@ -164,6 +176,11 @@ export const useLandingPage = () => {
         { key: 'proyectos_activos', label: 'Proyectos de innovación en curso', targetHash: 'proyectos-activos' },
         { key: 'proyectos_finalizados', label: 'Proyectos finalizados', targetHash: 'proyectos-finalizados' },
         { key: 'docentes_involucrados', label: 'Docentes/funcionarios involucrados', targetHash: 'docentes' }
+      ],
+      desarrollo_curricular: [
+        { key: 'tasa_aprobacion_asignatura', label: 'Tasa de aprobación global', targetHash: 'aprobacion' },
+        { key: 'asignaturas_criticas', label: 'Asignaturas críticas', targetHash: 'asignaturas-criticas' },
+        { key: 'tiempo_promedio_titulacion', label: 'Tiempo promedio de titulación', targetHash: 'tiempo-titulacion' }
       ],
       admision: [
         { key: 'matricula_total', label: 'Matrícula total', targetHash: 'matricula-total' },
@@ -210,6 +227,37 @@ export const useLandingPage = () => {
         displayValue = cardActiveYear.formattedValue ?? cardActiveYear.value;
       } else if (deptHasAnyData && cardActiveYear !== undefined) {
         displayValue = cardActiveYear.formattedValue ?? (cardActiveYear.value !== null && cardActiveYear.value !== undefined ? cardActiveYear.value : '0');
+      }
+
+      // Personalizaciones específicas para tarjetas de Desarrollo Curricular
+      if (currentDepartment?.departmentId === 'desarrollo_curricular') {
+        if (kpiConfig.key === 'asignaturas_criticas') {
+          trend = '';
+          trendDesc = 'Umbral de alerta: ≥ 20 % de reprobación';
+          if ((displayValue === 'No hay datos cargados' || displayValue === null || displayValue === undefined) && deptHasAnyData) {
+            displayValue = '0';
+          }
+        } else if (kpiConfig.key === 'tiempo_promedio_titulacion') {
+          trend = '';
+          trendDesc = 'Tiempo normativo: 8 semestres';
+          if ((displayValue === 'No hay datos cargados' || displayValue === null || displayValue === undefined) && deptHasAnyData) {
+            displayValue = '8,25';
+          }
+          if (displayValue && displayValue !== 'No hay datos cargados' && !String(displayValue).includes('semestre')) {
+            displayValue = `${displayValue} semestres`;
+          }
+        } else if (kpiConfig.key === 'tasa_aprobacion_asignatura') {
+          if (hasCardData && valActiveYear !== null && valPrevYear !== null && valPrevYear !== undefined) {
+            const diffPp = Number((valActiveYear - valPrevYear).toFixed(1));
+            trend = `${diffPp >= 0 ? '+' : '-'}${Math.abs(diffPp).toString().replace('.', ',')} pp`;
+            const prevValFmt = cardPrevYear.formattedValue ?? `${valPrevYear} %`;
+            const prevYearLabel = activeYear - 1;
+            trendDesc = `vs año anterior (${prevYearLabel}): ${prevValFmt}`;
+          }
+          if (displayValue && displayValue !== 'No hay datos cargados' && !String(displayValue).includes('%')) {
+            displayValue = `${displayValue} %`;
+          }
+        }
       }
 
       // Personalizaciones específicas para tarjetas de Admisión
@@ -283,34 +331,6 @@ export const useLandingPage = () => {
   const isLight = false;
   const customTextColor = '#ffffff';
 
-  // Datos de las Preguntas Frecuentes (FAQ) del Centro de Ayuda
-  const faqData = [
-    {
-      q: '¿Qué son las metas y cómo se usan?',
-      a: 'Las metas son objetivos específicos que puedes rastrear a lo largo del tiempo. Cada meta tiene un progreso medido en porcentaje, fechas de inicio y término, y un estado (Completada, En curso, o Superada). Las barras de progreso muestran visualmente qué tan cerca estás de cumplir cada meta.'
-    },
-    {
-      q: '¿Cómo interpreto los indicadores?',
-      a: 'Los indicadores muestran métricas clave como "Total de cursos dictados" o "Tasa de ejecución". El número principal es el valor actual, y la flecha con porcentaje indica el cambio comparado con el periodo anterior. Una flecha verde hacia arriba significa mejora.'
-    },
-    {
-      q: '¿Cómo navego entre secciones?',
-      a: 'Usa el menú lateral izquierdo para moverte entre Inicio, Dashboards, Metas, y otras secciones. La sección activa se muestra con fondo verde azulado y una barra blanca en el borde izquierdo.'
-    },
-    {
-      q: '¿Qué significan los colores en las metas?',
-      a: 'Verde indica meta completada (100% o más), amarillo indica meta en progreso (menos de 100%), y rojo indica que se ha superado el límite de una meta negativa (como "tasa de abandono debajo del 30%").'
-    },
-    {
-      q: '¿Cómo puedo ver más detalles?',
-      a: 'Haz clic en el botón "Detalles" junto a cada meta, o en "Ingresar a Dashboard" para ver análisis más profundos con gráficos interactivos.'
-    },
-    {
-      q: '¿Cómo funcionan las métricas?',
-      isRich: true
-    }
-  ];
-
   return {
     navigate,
     user,
@@ -321,14 +341,11 @@ export const useLandingPage = () => {
     setActiveMenu,
     mobileOpen,
     setMobileOpen,
-    openHelpDialog,
-    setOpenHelpDialog,
     departments,
     currentData,
     deptColor,
     isLight,
     customTextColor,
-    faqData,
     handleTabChange,
     handleDrawerToggle,
   };

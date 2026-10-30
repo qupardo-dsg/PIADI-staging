@@ -97,7 +97,11 @@ const procesarCarga = async (workbook, campos) => {
           }
           let valor = fila[campo.columna_excel];
           if (valor === undefined) {
-            const matchingKey = filaKeys.find(k => normalizarTexto(k) === normalizarTexto(campo.columna_excel));
+            const normCol = normalizarTexto(campo.columna_excel).replace(/[_\s]+/g, ' ');
+            const matchingKey = filaKeys.find(k => {
+              const normK = normalizarTexto(k);
+              return normK === normalizarTexto(campo.columna_excel) || normK.replace(/[_\s]+/g, ' ') === normCol;
+            });
             if (matchingKey) valor = fila[matchingKey];
           }
           if (esAdmision && typeof valor === 'string') {
@@ -232,20 +236,43 @@ const procesarCarga = async (workbook, campos) => {
               }
             }
 
-            // Normalizar fechas
+            // Normalizar fechas y tipos de datos
             const attrType = Model.rawAttributes[colDest];
             if (attrType) {
               const typeKey = attrType.type && (attrType.type.key || (attrType.type.constructor && attrType.type.constructor.name));
-              if (esAdmision && typeof valor === 'string') {
+              if (typeof valor === 'string') {
                 valor = valor.trim();
                 if (valor === '') valor = null;
               }
-              if (esAdmision && ['STRING', 'CHAR', 'TEXT'].includes(typeKey) && valor !== null && valor !== undefined) {
+              if (typeof valor === 'string' && (
+                (tabla === 'RendimientoAsignatura' && colDest === 'estadoAsignatura') ||
+                (tabla === 'Practica' && colDest === 'estado')
+              )) {
+                valor = valor.toLocaleUpperCase('es');
+              }
+              if (['STRING', 'CHAR', 'TEXT'].includes(typeKey) && valor !== null && valor !== undefined) {
                 valor = String(valor).trim();
               }
-              if (esAdmision && (typeKey === 'INTEGER' || typeKey === 'BIGINT' || typeKey === 'FLOAT' || typeKey === 'DECIMAL') && valor !== null) {
-                const numericValue = Number(valor);
-                if (Number.isFinite(numericValue)) valor = numericValue;
+              if ((typeKey === 'INTEGER' || typeKey === 'BIGINT' || typeKey === 'FLOAT' || typeKey === 'DECIMAL' || typeKey === 'NUMERIC') && valor !== null && valor !== undefined) {
+                if (typeof valor === 'string') {
+                  let cleanNum = valor.replace(/[\$\s]/g, '');
+                  if (cleanNum.includes('%')) {
+                    cleanNum = cleanNum.replace('%', '').trim().replace(',', '.');
+                    const num = Number(cleanNum);
+                    if (Number.isFinite(num)) valor = num;
+                  } else {
+                    if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(cleanNum)) {
+                      cleanNum = cleanNum.replace(/\./g, '').replace(',', '.');
+                    } else if (cleanNum.includes(',')) {
+                      cleanNum = cleanNum.replace(',', '.');
+                    }
+                    const num = Number(cleanNum);
+                    if (Number.isFinite(num)) valor = num;
+                  }
+                } else {
+                  const numericValue = Number(valor);
+                  if (Number.isFinite(numericValue)) valor = numericValue;
+                }
               }
               if (esAdmision && tabla === 'MatriculaPorAsignatura' && colDest === 'periodo' && valor !== null) {
                 valor = normalizeAdmissionPeriod(valor);
@@ -261,6 +288,32 @@ const procesarCarga = async (workbook, campos) => {
             }
 
             registro[colDest] = valor;
+          }
+
+          if (tabla === 'Titulacion' && (registro.periodo === undefined || registro.periodo === null)) {
+            registro.periodo = 1;
+          }
+
+          if (lookupMaps['Alumno']) {
+            let alumnoCached = null;
+            if (registro.rut && lookupMaps['Alumno']['rut']) {
+              alumnoCached = lookupMaps['Alumno']['rut'][registro.rut] || lookupMaps['Alumno']['rut'][String(registro.rut)];
+            }
+            if (!alumnoCached && lookupMaps['Alumno']['codCli']) {
+              const rawCodCliKey = Object.keys(fila._raw || {}).find((key) => normalizarTexto(key) === 'codcli');
+              if (rawCodCliKey && fila._raw[rawCodCliKey] !== null && fila._raw[rawCodCliKey] !== undefined) {
+                const codCliVal = String(fila._raw[rawCodCliKey]).trim();
+                alumnoCached = lookupMaps['Alumno']['codCli'][codCliVal] || lookupMaps['Alumno']['codCli'][codCliVal.toUpperCase()];
+              }
+            }
+            if (alumnoCached) {
+              if (!registro.codCli && alumnoCached.codCli) {
+                registro.codCli = alumnoCached.codCli;
+              }
+              if (!registro.rut && alumnoCached.rut) {
+                registro.rut = alumnoCached.rut;
+              }
+            }
           }
 
           if (Object.keys(registro).length > 0) {
@@ -288,10 +341,43 @@ const procesarCarga = async (workbook, campos) => {
 
         registrosAInsertar = registrosAInsertar.map((item) => item.record);
 
-        const pkAttrs = Model.primaryKeyAttributes || [];
+        let pkAttrs = Model.primaryKeyAttributes || [];
+        const hasPkInRecord = registrosAInsertar.some(r => pkAttrs.some(a => r[a] !== undefined && r[a] !== null && String(r[a]).trim() !== ''));
+        if (!hasPkInRecord) {
+          const uniqueAttrs = Object.entries(Model.rawAttributes || {})
+            .filter(([attr, def]) => def.unique && attr !== 'id')
+            .map(([attr]) => attr);
+          if (uniqueAttrs.length > 0) {
+            pkAttrs = uniqueAttrs;
+          } else if (Model.rawAttributes['idPrograma']) {
+            pkAttrs = ['idPrograma'];
+          } else if (Model.rawAttributes['idInscripcion']) {
+            pkAttrs = ['idInscripcion'];
+          } else if (Model.rawAttributes['idConvenio']) {
+            pkAttrs = ['idConvenio'];
+          } else if (Model.rawAttributes['idActividad']) {
+            pkAttrs = ['idActividad'];
+          } else if (Model.rawAttributes['idProyecto']) {
+            pkAttrs = ['idProyecto'];
+          } else if (Model.rawAttributes['idSeccion']) {
+            pkAttrs = ['idSeccion'];
+          } else if (tabla === 'RendimientoAsignatura') {
+            pkAttrs = ['rut', 'ramoEquiv', 'anio', 'periodo'];
+          } else if (tabla === 'Practica') {
+            pkAttrs = ['rut', 'anio', 'periodo', 'tipoPractica'];
+          } else if (tabla === 'Titulacion') {
+            pkAttrs = ['rut', 'anioTitulacion', 'periodo'];
+          }
+        }
+
         if (pkAttrs && pkAttrs.length > 0) {
           const map = new Map();
           for (const reg of registrosAInsertar) {
+            const hasKeyValue = pkAttrs.some(a => reg[a] !== undefined && reg[a] !== null && String(reg[a]).trim() !== '');
+            if (!hasKeyValue) {
+              map.set(Symbol(), reg);
+              continue;
+            }
             const key = pkAttrs.map(a => String(reg[a] !== undefined && reg[a] !== null ? reg[a] : '').trim().toLowerCase()).join('::');
             if (!map.has(key)) {
               map.set(key, reg);
@@ -326,6 +412,9 @@ const procesarCarga = async (workbook, campos) => {
               };
               if (nonPkAttributes.length > 0) {
                 bulkOptions.updateOnDuplicate = nonPkAttributes;
+                if (pkAttrs && pkAttrs.length > 0) {
+                  bulkOptions.conflictAttributes = pkAttrs;
+                }
               }
               const chunkResult = await Model.bulkCreate(chunk, bulkOptions);
               insertados.push(...chunkResult);
@@ -399,7 +488,7 @@ const procesarCarga = async (workbook, campos) => {
 
           // Usar las columnas de lookup declaradas en los campos como índices
           const camposLookup = campos.filter(c =>
-            c.tabla_destino === tabla && c.campo_lookup_columna_db
+            (c.campo_lookup_tabla === tabla || c.tabla_destino === tabla) && c.campo_lookup_columna_db
           );
 
           for (const cLookup of camposLookup) {
@@ -408,9 +497,9 @@ const procesarCarga = async (workbook, campos) => {
               lookupMaps[tabla][colDb] = {};
             }
             for (const inserted of insertados) {
-              const valorClave = inserted[colDb];
+              const valorClave = inserted[colDb] !== undefined ? inserted[colDb] : (inserted.dataValues && inserted.dataValues[colDb]);
               if (valorClave !== null && valorClave !== undefined) {
-                lookupMaps[tabla][colDb][String(valorClave)] = inserted.dataValues;
+                lookupMaps[tabla][colDb][String(valorClave)] = inserted.dataValues || inserted;
               }
             }
           }

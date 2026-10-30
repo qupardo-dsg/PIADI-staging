@@ -1,5 +1,16 @@
 const { Op } = require('sequelize');
-const { User, Role, Department, Plantilla, CampoPlantilla } = require('../models');
+const {
+  User,
+  Role,
+  Department,
+  Plantilla,
+  CampoPlantilla,
+  Alumno,
+  Asignatura,
+  RendimientoAsignatura,
+  Practica,
+  Titulacion
+} = require('../models');
 const {
   createEducacionContinuaPlantilla
 } = require('../config/plantillaEducacionContinua');
@@ -21,6 +32,11 @@ const {
   createAllAdmisionPlantillas,
   createAdmisionFields
 } = require('../config/plantillaAdmision');
+const {
+  DESARROLLO_CURRICULAR_TEMPLATE_NAME,
+  createDesarrolloCurricularPlantilla,
+  createDesarrolloCurricularFields
+} = require('../config/plantillaDesarrolloCurricular');
 
 async function seedDatabase() {
   try {
@@ -119,6 +135,14 @@ async function seedDatabase() {
         password: 'admin123',
         roleId: roleMap['Admisión'],
         departmentId: 'admision'
+      },
+      {
+        email: 'desarrollocurricular@ecas.cl',
+        username: 'desarrollocurricular@ecas.cl',
+        name: 'Dirección de Desarrollo Curricular',
+        password: 'admin123',
+        roleId: roleMap['Desarrollo Curricular'],
+        departmentId: 'desarrollo_curricular'
       }
     ];
 
@@ -149,10 +173,15 @@ async function seedDatabase() {
       createEducacionContinuaPlantilla(roleMap['Educación Continua']),
       createVcmPlantilla(roleMap['Vinculación Con El Medio']),
       createInnovationPlantilla(roleMap[INNOVACION_TEMPLATE_NAME]),
+      createDesarrolloCurricularPlantilla(roleMap['Desarrollo Curricular']),
       ...createAllAdmisionPlantillas(roleMap['Admisión'])
     ];
 
     for (const data of plantillasToSeed) {
+      if (data.archivoData && typeof data.archivoData.then === 'function') {
+        data.archivoData = await data.archivoData;
+      }
+
       const whereClause = (data.roleId && data.variante)
         ? { roleId: data.roleId, variante: data.variante }
         : { name: data.name };
@@ -246,16 +275,16 @@ async function seedDatabase() {
       { plantillaId: plantillaMap['Educación Continua'], nombre_campo: 'Matrícula',  columna_excel: 'Matrícula',  hoja_origen: 'Base Programas', tabla_destino: 'ResultadosPrograma', columna_destino: 'matricula',      tipo_dato: 'number', requerido: false, orden_insercion: 2 },
       { plantillaId: plantillaMap['Educación Continua'], nombre_campo: 'Aprobados',  columna_excel: 'Aprobados',  hoja_origen: 'Base Programas', tabla_destino: 'ResultadosPrograma', columna_destino: 'aprobados',      tipo_dato: 'number', requerido: false, orden_insercion: 2 },
       { plantillaId: plantillaMap['Educación Continua'], nombre_campo: 'Reprobados', columna_excel: 'Reprobados', hoja_origen: 'Base Programas', tabla_destino: 'ResultadosPrograma', columna_destino: 'reprobados',     tipo_dato: 'number', requerido: false, orden_insercion: 2 },
-      { plantillaId: plantillaMap['Educación Continua'], nombre_campo: 'Tasa Aprobación', columna_excel: 'Tasa Aprobación', hoja_origen: 'Base Programas', tabla_destino: 'ResultadosPrograma', columna_destino: 'tasaAprobacion', tipo_dato: 'string', requerido: false, orden_insercion: 2 },
+      { plantillaId: plantillaMap['Educación Continua'], nombre_campo: 'Tasa Aprobación', columna_excel: 'Tasa Aprobación', hoja_origen: 'Base Programas', tabla_destino: 'ResultadosPrograma', columna_destino: 'tasaAprobacion', tipo_dato: 'number', requerido: false, orden_insercion: 2 },
       { plantillaId: plantillaMap['Educación Continua'], nombre_campo: 'Estado',     columna_excel: 'Estado',     hoja_origen: 'Base Programas', tabla_destino: 'ResultadosPrograma', columna_destino: 'estado',          tipo_dato: 'string', requerido: false, orden_insercion: 2 },
       { plantillaId: plantillaMap['Educación Continua'], nombre_campo: 'Ejecutado',  columna_excel: 'Ejecutado',  hoja_origen: 'Base Programas', tabla_destino: 'ResultadosPrograma', columna_destino: 'ejecutado',       tipo_dato: 'string', requerido: false, orden_insercion: 2 },
 
       // EDUCACIÓN CONTINUA - ORDEN 2 — Hoja Base Programas → EstadoFinancieroPrograma
       { plantillaId: plantillaMap['Educación Continua'], nombre_campo: 'ID Programa',        columna_excel: 'ID Programa',        hoja_origen: 'Base Programas',       tabla_destino: 'EstadoFinancieroPrograma', columna_destino: 'idPrograma',       tipo_dato: 'string', requerido: true,  orden_insercion: 2, campo_lookup_tabla: 'Programa', campo_lookup_columna_db: 'idPrograma', campo_lookup_retorno: 'idPrograma' },
-      { plantillaId: plantillaMap['Educación Continua'], nombre_campo: 'Valor Lista CLP',    columna_excel: 'Valor Lista CLP',    hoja_origen: 'Base Programas',       tabla_destino: 'EstadoFinancieroPrograma', columna_destino: 'valorListaCLP',     tipo_dato: 'string', requerido: false, orden_insercion: 2 },
-      { plantillaId: plantillaMap['Educación Continua'], nombre_campo: 'Descuento Promedio', columna_excel: 'Descuento Promedio', hoja_origen: 'Base Programas',       tabla_destino: 'EstadoFinancieroPrograma', columna_destino: 'descuentoPromedio', tipo_dato: 'string', requerido: false, orden_insercion: 2 },
-      { plantillaId: plantillaMap['Educación Continua'], nombre_campo: 'Ingresos Brutos CLP',columna_excel: 'Ingresos Brutos CLP', hoja_origen: 'Base Programas',       tabla_destino: 'EstadoFinancieroPrograma', columna_destino: 'ingresosBrutosCLP', tipo_dato: 'string', requerido: false, orden_insercion: 2 },
-      { plantillaId: plantillaMap['Educación Continua'], nombre_campo: 'Ingresos Netos CLP', columna_excel: 'Ingresos Netos CLP', hoja_origen: 'Base Programas',       tabla_destino: 'EstadoFinancieroPrograma', columna_destino: 'ingresosNetosCLP',  tipo_dato: 'string', requerido: false, orden_insercion: 2 },
+      { plantillaId: plantillaMap['Educación Continua'], nombre_campo: 'Valor Lista CLP',    columna_excel: 'Valor Lista CLP',    hoja_origen: 'Base Programas',       tabla_destino: 'EstadoFinancieroPrograma', columna_destino: 'valorListaCLP',     tipo_dato: 'number', requerido: false, orden_insercion: 2 },
+      { plantillaId: plantillaMap['Educación Continua'], nombre_campo: 'Descuento Promedio', columna_excel: 'Descuento Promedio', hoja_origen: 'Base Programas',       tabla_destino: 'EstadoFinancieroPrograma', columna_destino: 'descuentoPromedio', tipo_dato: 'number', requerido: false, orden_insercion: 2 },
+      { plantillaId: plantillaMap['Educación Continua'], nombre_campo: 'Ingresos Brutos CLP',columna_excel: 'Ingresos Brutos CLP', hoja_origen: 'Base Programas',       tabla_destino: 'EstadoFinancieroPrograma', columna_destino: 'ingresosBrutosCLP', tipo_dato: 'number', requerido: false, orden_insercion: 2 },
+      { plantillaId: plantillaMap['Educación Continua'], nombre_campo: 'Ingresos Netos CLP', columna_excel: 'Ingresos Netos CLP', hoja_origen: 'Base Programas',       tabla_destino: 'EstadoFinancieroPrograma', columna_destino: 'ingresosNetosCLP',  tipo_dato: 'number', requerido: false, orden_insercion: 2 },
 
       // EDUCACIÓN CONTINUA - ORDEN 2 — Hoja Participantes Detalle → MatriculaPrograma
       { plantillaId: plantillaMap['Educación Continua'], nombre_campo: 'ID Inscripción',     columna_excel: 'ID Inscripción',     hoja_origen: 'Participantes Detalle', tabla_destino: 'MatriculaPrograma', columna_destino: 'idInscripcion',      tipo_dato: 'string', requerido: true,  orden_insercion: 2 },
@@ -360,15 +389,25 @@ async function seedDatabase() {
       // INNOVACIÓN — Proyecto/Seccion (orden 1) y Financiamiento (orden 2)
       ...createInnovationFields(plantillaMap[INNOVACION_TEMPLATE_NAME]),
 
+      // DESARROLLO CURRICULAR — Rendimiento (orden 1), Prácticas (orden 2), Titulación (orden 3)
+      ...createDesarrolloCurricularFields(plantillaMap[DESARROLLO_CURRICULAR_TEMPLATE_NAME]),
+
       // ADMISIÓN — 3 variantes
       ...createAdmisionFields(plantillaMap[ADMISION_COMBINADA_NAME], VARIANTE_COMBINADA),
       ...createAdmisionFields(plantillaMap[ADMISION_MATRICULA_NAME], VARIANTE_MATRICULA),
       ...createAdmisionFields(plantillaMap[ADMISION_CARACTERIZACION_NAME], VARIANTE_CARACTERIZACION)
     ];
 
+    const seededKeysByPlantilla = new Map();
     for (const data of camposToSeed) {
       if (!data.plantillaId) continue;
-      await CampoPlantilla.findOrCreate({
+      if (!seededKeysByPlantilla.has(data.plantillaId)) {
+        seededKeysByPlantilla.set(data.plantillaId, new Set());
+      }
+      const key = `${data.hoja_origen}__${data.tabla_destino}__${data.columna_destino}__${data.nombre_campo}`;
+      seededKeysByPlantilla.get(data.plantillaId).add(key);
+
+      const [campo, created] = await CampoPlantilla.findOrCreate({
         where: { 
           plantillaId: data.plantillaId, 
           nombre_campo: data.nombre_campo, 
@@ -378,14 +417,38 @@ async function seedDatabase() {
         },
         defaults: data
       });
+      if (!created && campo && typeof campo.update === 'function') {
+        await campo.update(data);
+      }
+    }
+
+    // Limpieza de campos obsoletos en plantillas sembradas
+    for (const [plantillaId, validKeys] of seededKeysByPlantilla.entries()) {
+      if (typeof CampoPlantilla.findAll === 'function') {
+        const existingFields = await CampoPlantilla.findAll({ where: { plantillaId } });
+        for (const ef of existingFields) {
+          const key = `${ef.hoja_origen}__${ef.tabla_destino}__${ef.columna_destino}__${ef.nombre_campo}`;
+          if (!validKeys.has(key) && typeof ef.destroy === 'function') {
+            await ef.destroy();
+          }
+        }
+      }
     }
     console.log('Campos plantilla ensured in database.');
 
     // 5. Seed VCM transactional mock data (only if empty)
     console.log('Skipping VCM mock data seeding (removed).');
+
+    // 6. Seed Desarrollo Curricular transactional data (removed)
+    console.log('Skipping Desarrollo Curricular mock data seeding (removed).');
   } catch (error) {
     console.error('Error seeding database:', error);
   }
 }
 
-module.exports = { seedDatabase };
+async function seedDesarrolloCurricularData() {
+  console.log('Skipping Desarrollo Curricular mock data seeding (removed).');
+}
+
+module.exports = { seedDatabase, seedDesarrolloCurricularData };
+

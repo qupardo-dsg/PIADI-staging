@@ -151,6 +151,68 @@ const aggregateAdmissionCharacterization = (rows) => ({
   ).size
 });
 
+const curricularState = (value) => String(value || '').trim().toUpperCase();
+
+const aggregateCurricularRendimiento = (rows) => {
+  // La clave natural del modelo identifica una evaluación, no cada JOIN o fila repetida.
+  const evaluations = new Map();
+  rows.forEach((row) => {
+    const state = curricularState(row.estadoAsignatura);
+    if (!['APROBADO', 'REPROBADO'].includes(state)) return;
+    const key = `${row.rut}|${row.ramoEquiv}|${row.anio}|${row.periodo}`;
+    if (!evaluations.has(key)) evaluations.set(key, { ...row, state });
+  });
+  const byCourse = new Map();
+  for (const row of evaluations.values()) {
+    const course = byCourse.get(row.ramoEquiv) || { evaluables: 0, reprobados: 0 };
+    course.evaluables += 1;
+    if (row.state === 'REPROBADO') course.reprobados += 1;
+    byCourse.set(row.ramoEquiv, course);
+  }
+  return {
+    evaluablesCount: evaluations.size,
+    aprobadosCount: [...evaluations.values()].filter((row) => row.state === 'APROBADO').length,
+    reprobadosCount: [...evaluations.values()].filter((row) => row.state === 'REPROBADO').length,
+    // Criterio operativo pendiente de ratificación académica: cantidad de
+    // ramos cuya reprobación es estrictamente superior al 30 % del grupo.
+    asignaturasCriticasCount: [...byCourse.values()]
+      .filter((course) => course.evaluables > 0 && course.reprobados / course.evaluables > 0.30).length
+  };
+};
+
+const aggregateCurricularPractica = (rows) => {
+  const registered = rows.filter((row) => ['INSCRITA', 'APROBADA'].includes(curricularState(row.estado)));
+  return {
+    // Criterio operativo pendiente de ratificación académica: una práctica
+    // aprobada también fue una inscripción; cada estudiante cuenta una vez.
+    practicasRegistradasCount: registered.length,
+    practicasInscritasCount: new Set(registered
+      .map((row) => row.rut).filter((rut) => rut !== null && rut !== undefined)).size,
+    practicasAprobadasCount: new Set(rows
+      .filter((row) => curricularState(row.estado) === 'APROBADA')
+      .map((row) => row.rut).filter((rut) => rut !== null && rut !== undefined)).size
+  };
+};
+
+const aggregateCurricularTitulacion = (rows) => {
+  const byStudent = new Map();
+  rows.forEach((row) => {
+    if (row.rut === null || row.rut === undefined) return;
+    const previous = byStudent.get(row.rut);
+    if (!previous || (previous.semestresCursados == null && row.semestresCursados != null)) {
+      byStudent.set(row.rut, row);
+    }
+  });
+  const times = [...byStudent.values()]
+    .map((row) => Number(row.semestresCursados))
+    .filter((value) => Number.isFinite(value) && value > 0);
+  return {
+    tituladosCount: byStudent.size,
+    semestresSum: times.reduce((sum, value) => sum + value, 0),
+    semestresCount: times.length
+  };
+};
+
 // (A) Primera matrícula dentro del año: cada alumno cuenta una sola vez, en el
 // primer semestre en que aparece ese año (Otoño=1, Primavera=2). Reasigna el
 // periodo de cada fila a esa primera matrícula para que el agrupamiento por
@@ -215,6 +277,9 @@ const aggregate = (config, rows) => {
   if (config.kind === 'innovation_section') return aggregateInnovationSection(rows);
   if (config.kind === 'admission_enrollment') return aggregateAdmissionEnrollment(rows);
   if (config.kind === 'admission_characterization') return aggregateAdmissionCharacterization(rows);
+  if (config.kind === 'curricular_rendimiento') return aggregateCurricularRendimiento(rows);
+  if (config.kind === 'curricular_practica') return aggregateCurricularPractica(rows);
+  if (config.kind === 'curricular_titulacion') return aggregateCurricularTitulacion(rows);
   return aggregateProgram(rows);
 };
 
@@ -240,6 +305,9 @@ const getRows = (config, filters, { historical = false } = {}) => {
   if (config.kind === 'innovation_section') return provider.getInnovationSectionRows(filters);
   if (config.kind === 'admission_enrollment') return provider.getAdmissionEnrollmentRows(filters);
   if (config.kind === 'admission_characterization') return provider.getAdmissionCharacterizationRows(filters);
+  if (config.kind === 'curricular_rendimiento') return provider.getCurricularRendimientoRows(filters);
+  if (config.kind === 'curricular_practica') return provider.getCurricularPracticaRows(filters);
+  if (config.kind === 'curricular_titulacion') return provider.getCurricularTitulacionRows(filters);
   return provider.getProgramRows(filters);
 };
 
@@ -252,6 +320,16 @@ const computeFromRows = (config, definition, rows) => {
   const hasData = result.hasData && result.value !== null && result.value !== undefined;
   return { value: hasData ? result.value : null, hasData };
 };
+
+const VCM_SEX_COUNTERS = ['mujeres', 'hombres', 'noInforma'];
+
+// Las participaciones almacenan tres contadores, no una persona ni un sexo por fila.
+// Estas filas de medida sólo existen en memoria y conservan las demás dimensiones.
+const splitVcmParticipationBySex = (rows) => rows.flatMap((row) =>
+  VCM_SEX_COUNTERS.flatMap((sexo) => {
+    const count = Number(row[sexo] ?? 0);
+    return count > 0 ? [{ ...row, sexo, totalPersonas: count }] : [];
+  }));
 
 const groupRowsBy = (rows, dimension) => {
   const groups = new Map();
@@ -286,6 +364,190 @@ const validateGroupBy = (config, groupBy) => {
     });
   }
   return resolvedGroupBy;
+};
+
+const matrixDimension = (dimension, row) => dimension === 'year' ? Number(row.anio) : row[dimension];
+const matrixCategory = (dimension, value) => {
+  const missing = value === null || value === undefined || value === '' ||
+    (typeof value === 'number' && !Number.isFinite(value));
+  return missing
+    ? { id: `${dimension}:null`, label: 'Sin dato', value: null }
+    : { id: `${dimension}:${typeof value}:${String(value)}`, label: String(value), value };
+};
+const sortMatrixCategories = (dimension, left, right) => {
+  if (left.value === null) return right.value === null ? 0 : 1;
+  if (right.value === null) return -1;
+  if (dimension === 'year' || dimension === 'periodo') return Number(left.value) - Number(right.value);
+  return left.label.localeCompare(right.label, 'es', { numeric: true });
+};
+const matrixLimit = (name, fallback) => {
+  const configured = Number(process.env[name]);
+  return Number.isSafeInteger(configured) && configured > 0 ? configured : fallback;
+};
+
+const buildBidimensionalMatrix = async ({ config, definition, filters, rowDimension, colDimension }) => {
+  const admissionDimension = [rowDimension, colDimension].includes('periodo') ? 'periodo' : rowDimension;
+  const fetchFilters = admissionFetchFilters(config, definition, filters, admissionDimension);
+  if (config.kind === 'admission_enrollment' && [rowDimension, colDimension].includes('nuevoAntiguo')) {
+    fetchFilters.needsNuevoAntiguo = true;
+  }
+  let rows = await getRows(config, fetchFilters, { historical: colDimension === 'year' || rowDimension === 'year' });
+  if (fetchFilters.primeraMatricula) rows = applyAdmissionFirstPeriod(rows, filters);
+  const sourceRows = rows;
+  if (config.kind === 'vcm_participacion' && [rowDimension, colDimension].includes('sexo')) {
+    rows = splitVcmParticipationBySex(rows);
+  }
+
+  const rowGroups = new Map();
+  const colGroups = new Map();
+  const intersections = new Map();
+  for (const record of rows) {
+    const rowCategory = matrixCategory(rowDimension, matrixDimension(rowDimension, record));
+    const colCategory = matrixCategory(colDimension, matrixDimension(colDimension, record));
+    if (!rowGroups.has(rowCategory.id)) rowGroups.set(rowCategory.id, { ...rowCategory, rows: [] });
+    if (!colGroups.has(colCategory.id)) colGroups.set(colCategory.id, { ...colCategory, rows: [] });
+    rowGroups.get(rowCategory.id).rows.push(record);
+    colGroups.get(colCategory.id).rows.push(record);
+    if (!intersections.has(rowCategory.id)) intersections.set(rowCategory.id, new Map());
+    const byColumn = intersections.get(rowCategory.id);
+    if (!byColumn.has(colCategory.id)) byColumn.set(colCategory.id, []);
+    byColumn.get(colCategory.id).push(record);
+  }
+
+  const maxRows = matrixLimit('INDICATOR_MATRIX_MAX_ROWS', 50);
+  const maxColumns = matrixLimit('INDICATOR_MATRIX_MAX_COLUMNS', 20);
+  if (rowGroups.size > maxRows || colGroups.size > maxColumns) {
+    throw new ServiceError(400, 'MATRIX_LIMIT_EXCEEDED', 'La matriz supera el límite de categorías permitido', {
+      rows: rowGroups.size, columns: colGroups.size, maxRows, maxColumns
+    });
+  }
+
+  const orderedRows = [...rowGroups.values()].sort((a, b) => sortMatrixCategories(rowDimension, a, b));
+  const orderedColumns = [...colGroups.values()].sort((a, b) => sortMatrixCategories(colDimension, a, b));
+  const columns = orderedColumns.map((category) => category.id);
+  const columnLabels = Object.create(null);
+  const columnTotals = Object.create(null);
+  for (const category of orderedColumns) {
+    columnLabels[category.id] = category.label;
+    columnTotals[category.id] = computeFromRows(config, definition, category.rows).value;
+  }
+  const matrix = orderedRows.map((category) => {
+    const values = Object.create(null);
+    for (const column of orderedColumns) {
+      values[column.id] = computeFromRows(
+        config, definition, intersections.get(category.id).get(column.id) || []
+      ).value;
+    }
+    return {
+      row: category.label,
+      rowKey: category.id,
+      values,
+      total: computeFromRows(config, definition, category.rows).value
+    };
+  });
+  return {
+    isBidimensional: true,
+    rowDimension,
+    colDimension,
+    columns,
+    columnLabels,
+    matrix,
+    totals: { columns: columnTotals, general: computeFromRows(config, definition, sourceRows).value },
+    matrixFilters: buildFilterMeta(filters)
+  };
+};
+
+// El cubo conserva los mismos IDs tipados y fórmulas que la matriz 2D. Cada
+// marginal se calcula desde sus filas fuente: sumar celdas no sería correcto
+// para DISTINCT, tasas o promedios.
+const buildTridimensionalMatrix = async ({ config, definition, filters, rowDimension, colDimension, depthDimension }) => {
+  const dimensions = [rowDimension, colDimension, depthDimension];
+  // El provider de participaciones VcM entrega contadores por sexo, no una
+  // propiedad sexo por fila. Su adaptación ponderada pertenece a otro cambio.
+  if (config.kind === 'vcm_participacion' && dimensions.includes('sexo')) {
+    throw new ServiceError(400, 'UNSUPPORTED_GROUP_DIMENSION',
+      'El cubo por sexo no está disponible para participaciones VcM');
+  }
+  const admissionDimension = dimensions.includes('periodo') ? 'periodo' : rowDimension;
+  const fetchFilters = admissionFetchFilters(config, definition, filters, admissionDimension);
+  if (config.kind === 'admission_enrollment' && dimensions.includes('nuevoAntiguo')) {
+    fetchFilters.needsNuevoAntiguo = true;
+  }
+  let rows = await getRows(config, fetchFilters, { historical: dimensions.includes('year') });
+  if (fetchFilters.primeraMatricula) rows = applyAdmissionFirstPeriod(rows, filters);
+
+  const rowGroups = new Map();
+  const colGroups = new Map();
+  const depthGroups = new Map();
+  const intersections = new Map();
+  for (const record of rows) {
+    const categories = dimensions.map((dimension) =>
+      matrixCategory(dimension, matrixDimension(dimension, record)));
+    const [row, col, depth] = categories;
+    for (const [groups, category] of [[rowGroups, row], [colGroups, col], [depthGroups, depth]]) {
+      if (!groups.has(category.id)) groups.set(category.id, { ...category, rows: [] });
+      groups.get(category.id).rows.push(record);
+    }
+    if (!intersections.has(row.id)) intersections.set(row.id, new Map());
+    const byColumn = intersections.get(row.id);
+    if (!byColumn.has(col.id)) byColumn.set(col.id, { rows: [], byDepth: new Map() });
+    const cell = byColumn.get(col.id);
+    cell.rows.push(record);
+    if (!cell.byDepth.has(depth.id)) cell.byDepth.set(depth.id, []);
+    cell.byDepth.get(depth.id).push(record);
+  }
+
+  const maxRows = matrixLimit('INDICATOR_MATRIX_MAX_ROWS', 50);
+  const maxColumns = matrixLimit('INDICATOR_MATRIX_MAX_COLUMNS', 20);
+  const maxDepth = matrixLimit('INDICATOR_CUBE_MAX_DEPTH', 10);
+  const maxIntersections = matrixLimit('INDICATOR_CUBE_MAX_INTERSECTIONS', 10000);
+  const possibleIntersections = rowGroups.size * colGroups.size * depthGroups.size;
+  if (rowGroups.size > maxRows || colGroups.size > maxColumns
+    || depthGroups.size > maxDepth || possibleIntersections > maxIntersections) {
+    throw new ServiceError(400, 'MATRIX_LIMIT_EXCEEDED', 'El cubo supera el límite de categorías permitido', {
+      rows: rowGroups.size, columns: colGroups.size, depth: depthGroups.size,
+      intersections: possibleIntersections, maxRows, maxColumns, maxDepth, maxIntersections
+    });
+  }
+
+  const orderedRows = [...rowGroups.values()].sort((a, b) => sortMatrixCategories(rowDimension, a, b));
+  const orderedColumns = [...colGroups.values()].sort((a, b) => sortMatrixCategories(colDimension, a, b));
+  const orderedDepths = [...depthGroups.values()].sort((a, b) => sortMatrixCategories(depthDimension, a, b));
+  const columns = orderedColumns.map((category) => category.id);
+  const depths = orderedDepths.map((category) => category.id);
+  const columnLabels = Object.fromEntries(orderedColumns.map((category) => [category.id, category.label]));
+  const depthLabels = Object.fromEntries(orderedDepths.map((category) => [category.id, category.label]));
+  const cube = orderedRows.map((category) => {
+    const values = Object.create(null);
+    for (const column of orderedColumns) {
+      const cell = intersections.get(category.id)?.get(column.id);
+      const depthValues = Object.create(null);
+      for (const depth of orderedDepths) {
+        depthValues[depth.id] = computeFromRows(config, definition, cell?.byDepth.get(depth.id) || []).value;
+      }
+      values[column.id] = {
+        total: computeFromRows(config, definition, cell?.rows || []).value,
+        depthValues
+      };
+    }
+    return {
+      row: category.label,
+      rowKey: category.id,
+      values,
+      total: computeFromRows(config, definition, category.rows).value
+    };
+  });
+  return {
+    isTridimensional: true,
+    rowDimension, colDimension, depthDimension,
+    columns, columnLabels, depths, depthLabels, cube,
+    totals: {
+      columns: Object.fromEntries(orderedColumns.map((category) =>
+        [category.id, computeFromRows(config, definition, category.rows).value])),
+      general: computeFromRows(config, definition, rows).value
+    },
+    matrixFilters: buildFilterMeta(filters)
+  };
 };
 
 const getRequestedYearRange = (filters) => {
@@ -339,7 +601,9 @@ const buildAnnualPoints = (config, definition, rows, filters, yearAxis = null) =
   const years = yearAxis || buildYearAxis(filters, rows);
   return years.map((year) => {
     const bucket = byYear.get(year);
-    if (!bucket || !bucket.length) return { year: Number(year), value: 0 };
+    if (!bucket || !bucket.length) {
+      return { year: Number(year), value: config.kind.startsWith('curricular_') ? null : 0 };
+    }
     const { value, hasData } = computeFromRows(config, definition, bucket);
     return { year: Number(year), value: hasData ? value : null };
   });
@@ -369,39 +633,40 @@ const resolveConfig = async (departmentKey, indicatorKey) => {
   return { definition, config };
 };
 
-const getIndicatorValue = async (indicatorKey, query = {}) => {
+const getIndicatorValue = async (indicatorKey, query = {}, options = {}) => {
   const key = ensureIndicatorKey(indicatorKey);
   const filters = parseIndicatorFilters(query);
   const departmentId = ensureDepartment(filters.department);
   await requireDepartment(departmentId);
 
   const cacheKey = `kpi:${departmentId}:val:${key}:${JSON.stringify(query)}`;
-    return cacheService.wrap(cacheKey, async () => {
-      const { definition, config } = await resolveConfig(departmentId, key);
-      
-      const fetchFilters = admissionFetchFilters(config, definition, filters, null);
-      let rows = await getRows(config, fetchFilters);
-      if (fetchFilters.primeraMatricula) {
-        rows = applyAdmissionFirstPeriod(rows, filters);
-      }
-      const { value, hasData } = computeFromRows(config, definition, rows);
+  const calculateValue = async () => {
+    const { definition, config } = await resolveConfig(departmentId, key);
 
-      const data = {
-        indicatorKey: key,
-        department: departmentId,
-        value,
-        formattedValue: hasData ? formatValue(value, definition.format) : null,
-        unit: definition.unit,
-        format: definition.format,
-        hasData,
-        filters: buildFilterMeta(filters),
-        meta: { source: 'postgresql', formulaKey: definition.formulaKey }
-      };
-      if (!hasData) {
-        data.message = 'No existen datos suficientes para calcular este indicador.';
-      }
-      return { data };
-    });
+    const fetchFilters = admissionFetchFilters(config, definition, filters, null);
+    let rows = await getRows(config, fetchFilters);
+    if (fetchFilters.primeraMatricula) {
+      rows = applyAdmissionFirstPeriod(rows, filters);
+    }
+    const { value, hasData } = computeFromRows(config, definition, rows);
+
+    const data = {
+      indicatorKey: key,
+      department: departmentId,
+      value,
+      formattedValue: hasData ? formatValue(value, definition.format) : null,
+      unit: definition.unit,
+      format: definition.format,
+      hasData,
+      filters: buildFilterMeta(filters),
+      meta: { source: 'postgresql', formulaKey: definition.formulaKey }
+    };
+    if (!hasData) {
+      data.message = 'No existen datos suficientes para calcular este indicador.';
+    }
+    return { data };
+  };
+  return options.bypassCache ? calculateValue() : cacheService.wrap(cacheKey, calculateValue);
 };
 
 const getIndicatorSeries = async (indicatorKey, query = {}) => {
@@ -448,12 +713,15 @@ const getIndicatorSeries = async (indicatorKey, query = {}) => {
         };
       }
 
-    const bySegment = groupRowsBy(rows, groupBy);
-    const series = [];
     const sharedYearAxis = yearAxis || buildYearAxis(historicalFilters, rows);
+    const segmentRows = config.kind === 'vcm_participacion' && groupBy === 'sexo'
+      ? splitVcmParticipationBySex(rows)
+      : rows;
+    const bySegment = groupRowsBy(segmentRows, groupBy);
+    const series = [];
     [...bySegment.keys()].sort().forEach((label) => {
-      const segmentRows = bySegment.get(label);
-      const points = buildAnnualPoints(config, definition, segmentRows, historicalFilters, sharedYearAxis);
+      const rowsForSegment = bySegment.get(label);
+      const points = buildAnnualPoints(config, definition, rowsForSegment, historicalFilters, sharedYearAxis);
       if (points.length > 0) {
         series.push({ label: String(label), points });
       }
@@ -509,16 +777,14 @@ const getIndicatorBreakdown = async (indicatorKey, query = {}) => {
     }
     const metaContext = await require('./metaIndicatorIntegrationService').getIndicatorMetaContext(key, query);
 
-    // Custom handler for VCM participaciones grouped by sex
+    // Conserva el contrato del breakdown y comparte la medida con series y matriz.
     if (config.kind === 'vcm_participacion' && groupBy === 'sexo') {
-      const totalMujeres = rows.reduce((sum, r) => sum + (r.mujeres || 0), 0);
-      const totalHombres = rows.reduce((sum, r) => sum + (r.hombres || 0), 0);
-      const totalNoInforma = rows.reduce((sum, r) => sum + (r.noInforma || 0), 0);
-
-      const items = [];
-      if (totalMujeres > 0) items.push({ label: 'mujeres', value: totalMujeres });
-      if (totalHombres > 0) items.push({ label: 'hombres', value: totalHombres });
-      if (totalNoInforma > 0) items.push({ label: 'noInforma', value: totalNoInforma });
+      const groups = groupRowsBy(splitVcmParticipationBySex(rows), 'sexo');
+      const items = VCM_SEX_COUNTERS.filter((sexo) => groups.has(sexo))
+        .map((sexo) => ({
+          label: sexo,
+          value: computeFromRows(config, definition, groups.get(sexo)).value
+        }));
       items.sort((a, b) => b.value - a.value);
 
       return {
@@ -696,7 +962,7 @@ const getEnabledKpis = async (departmentKey) => {
  * Vista detallada de un indicador: metadatos + serie por año + tabla + comparación.
  * Fuente del endpoint GET /api/indicators/:key/detail.
  *
- * Sin groupBy -> serie por año (fase 1). Con groupBy -> desagregado por categoría (fase 2).
+ * Sin groupBy efectivo -> serie por año. Un default opcional del catálogo activa el desagregado.
  * Acepta year/fromYear/toYear y groupBy (debe estar en allowedGroupBy del indicador).
  */
 const getIndicatorDetailView = async (indicatorKey, query = {}) => {
@@ -709,9 +975,59 @@ const getIndicatorDetailView = async (indicatorKey, query = {}) => {
   const department = kpi.departmentId;
   const cacheKey = `kpi:${department}:detail:${key}:${JSON.stringify(query)}`;
   return cacheService.wrap(cacheKey, async () => {
-    const baseQuery = { ...query, department };
+    const hasSplitBy = Object.prototype.hasOwnProperty.call(query, 'splitBy');
+    const hasSplitBy2 = Object.prototype.hasOwnProperty.call(query, 'splitBy2');
+    const { splitBy: _omitSplitBy, splitBy2: _omitSplitBy2, ...detailQuery } = query;
+    const baseQuery = { ...detailQuery, department };
     const config = getIndicatorConfig(key, kpi) || { allowedGroupBy: [] };
-    const groupBy = validateGroupBy(config, query.groupBy || null);
+    const requestedGroupBy = Object.prototype.hasOwnProperty.call(query, 'groupBy')
+      ? query.groupBy
+      : (config.defaultGroupBy ?? null);
+    if (hasSplitBy2 && !hasSplitBy) {
+      throw new ServiceError(400, 'MISSING_COLUMN_DIMENSION', 'splitBy2 requiere splitBy');
+    }
+    if (hasSplitBy) {
+      const dimensions = [['groupBy', requestedGroupBy], ['splitBy', query.splitBy]];
+      if (hasSplitBy2) dimensions.push(['splitBy2', query.splitBy2]);
+      for (const [name, value] of dimensions) {
+        if (typeof value !== 'string' || !value.trim() || value.includes(',')) {
+          const code = name === 'groupBy'
+            ? (value === null || value === '' ? 'MISSING_ROW_DIMENSION' : 'INVALID_GROUP_BY')
+            : (name === 'splitBy' ? 'INVALID_SPLIT_BY' : 'INVALID_SPLIT_BY2');
+          throw new ServiceError(400, code,
+          `El parámetro ${name} debe contener una sola dimensión válida`);
+        }
+      }
+    }
+    const groupBy = validateGroupBy(config, requestedGroupBy);
+    let splitBy = null;
+    let splitBy2 = null;
+    if (hasSplitBy) {
+      try {
+        splitBy = validateGroupBy(config, query.splitBy === 'anio' ? 'year' : query.splitBy);
+      } catch (error) {
+        if (error.code !== 'INVALID_GROUP_BY') throw error;
+        throw new ServiceError(400, 'INVALID_SPLIT_BY', 'El splitBy solicitado no aplica para este indicador', {
+          splitBy: query.splitBy, allowed: config.allowedGroupBy
+        });
+      }
+      if (groupBy === splitBy) {
+        throw new ServiceError(400, 'DUPLICATE_GROUP_DIMENSIONS', 'groupBy y splitBy deben ser diferentes');
+      }
+    }
+    if (hasSplitBy2) {
+      try {
+        splitBy2 = validateGroupBy(config, query.splitBy2 === 'anio' ? 'year' : query.splitBy2);
+      } catch (error) {
+        if (error.code !== 'INVALID_GROUP_BY') throw error;
+        throw new ServiceError(400, 'INVALID_SPLIT_BY2', 'El splitBy2 solicitado no aplica para este indicador', {
+          splitBy2: query.splitBy2, allowed: config.allowedGroupBy
+        });
+      }
+      if (splitBy2 === groupBy || splitBy2 === splitBy) {
+        throw new ServiceError(400, 'DUPLICATE_GROUP_DIMENSIONS', 'Las tres dimensiones deben ser diferentes');
+      }
+    }
     const requestedFilters = parseIndicatorFilters(baseQuery);
 
     // Un año puntual define la referencia, pero no recorta la historia. Un rango
@@ -775,7 +1091,7 @@ const getIndicatorDetailView = async (indicatorKey, query = {}) => {
 
     let table;
     let series;
-    if (groupBy) {
+    if (groupBy && groupBy !== 'year') {
       const breakdownResult = await module.exports.getIndicatorBreakdown(key, { ...baseQuery, groupBy });
       table = (breakdownResult.data.items || []).map((item) => ({ label: item.label, value: item.value }));
       const seriesResult = await module.exports.getIndicatorSeries(key, { ...baseQuery, groupBy });
@@ -785,6 +1101,14 @@ const getIndicatorDetailView = async (indicatorKey, query = {}) => {
       series = annualPoints;
     }
 
+    const matrixResult = hasSplitBy2
+      ? await buildTridimensionalMatrix({
+        config, definition: kpi, filters: requestedFilters,
+        rowDimension: groupBy, colDimension: splitBy, depthDimension: splitBy2
+      })
+      : (hasSplitBy ? await buildBidimensionalMatrix({
+        config, definition: kpi, filters: requestedFilters, rowDimension: groupBy, colDimension: splitBy
+      }) : null);
     return {
       data: {
         indicatorKey: key,
@@ -796,7 +1120,7 @@ const getIndicatorDetailView = async (indicatorKey, query = {}) => {
         total,
         formattedTotal: hasData ? formatValue(total, kpi.format) : null,
         hasData,
-        disaggregated: Boolean(groupBy),
+        disaggregated: Boolean(groupBy && groupBy !== 'year'),
         groupBy,
         allowedGroupBy: Array.isArray(config.allowedGroupBy) ? config.allowedGroupBy : [],
         dimensionLabels: Object.fromEntries(
@@ -809,7 +1133,8 @@ const getIndicatorDetailView = async (indicatorKey, query = {}) => {
         table,
         series,
         filters: buildFilterMeta(requestedFilters),
-        meta: { source: 'postgresql', formulaKey: kpi.formulaKey }
+        meta: { source: 'postgresql', formulaKey: kpi.formulaKey },
+        ...(matrixResult || {})
       }
     };
   });
@@ -819,6 +1144,8 @@ const getIndicatorDetail = async (indicatorKey, query = {}) => {
   const result = await getIndicatorDetailView(indicatorKey, query);
   return result.data;
 };
+
+
 
 module.exports = {
   ServiceError,
@@ -839,5 +1166,6 @@ module.exports = {
   getDepartmentFilters,
   getIndicatorValue,
   getIndicatorSeries,
-  getIndicatorBreakdown
+  getIndicatorBreakdown,
+  getIndicatorDetailView
 };

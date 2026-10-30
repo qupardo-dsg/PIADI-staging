@@ -15,6 +15,7 @@ import {
   Alert,
   Select,
   MenuItem,
+  Tooltip,
 } from '@mui/material';
 import {
   Adjust as TargetIcon,
@@ -31,6 +32,8 @@ import {
   TrendingUp as TrendingUpIcon,
   TrendingDown as TrendingDownIcon,
   SwapHoriz as RangeIcon,
+  Drafts as DraftsIcon,
+  Send as SendIcon,
 } from '@mui/icons-material';
 
 export const MetaForm = () => {
@@ -55,6 +58,8 @@ export const MetaForm = () => {
     errors,
     showSaveAlert,
     setShowSaveAlert,
+    metricLimitAlert,
+    setMetricLimitAlert,
     metricModalOpen,
     setMetricModalOpen,
     previewModalOpen,
@@ -85,6 +90,7 @@ export const MetaForm = () => {
     handleOpenEditMetric,
     handleSaveMetric,
     handleDeleteMetric,
+    handleSaveDraft,
     handleSaveMeta,
     handleOpenPreview,
     departmentsList,
@@ -187,23 +193,23 @@ export const MetaForm = () => {
                         bgcolor: '#ffffff !important',
                         backgroundColor: '#ffffff !important',
                         borderRadius: '8px',
-                        boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
-                        border: '1.5px solid #000000',
+                        boxShadow: '0 10px 25px rgba(0,0,0,0.1)',
+                        border: '1px solid #E5E7EB',
                         mt: 0.5,
                         '& .MuiMenuItem-root': {
                           fontSize: '13.5px',
-                          color: '#000000 !important',
+                          color: '#111827 !important',
                           fontWeight: 500,
                           whiteSpace: 'normal',
                           wordBreak: 'break-word',
                           py: 1,
                           '&:hover': {
                             bgcolor: '#f3f4f6 !important',
-                            color: '#000000 !important',
+                            color: '#111827 !important',
                           },
                           '&.Mui-selected': {
                             bgcolor: '#e5e7eb !important',
-                            color: '#000000 !important',
+                            color: '#111827 !important',
                             fontWeight: 700,
                             '&:hover': {
                               bgcolor: '#d1d5db !important',
@@ -235,34 +241,36 @@ export const MetaForm = () => {
                     bgcolor: '#ffffff',
                     borderRadius: '8px',
                     fontSize: '14px',
-                    color: '#000000',
+                    color: '#111827',
                     height: '42px',
-                    border: errors.departamento ? '1px solid #dc2626' : '1px solid #000000',
+                    border: errors.departamento ? '1px solid #dc2626' : '1px solid #D1D5DB',
+                    transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
                     '& .MuiOutlinedInput-notchedOutline': {
                       border: 'none',
                     },
                     '&:hover': {
-                      borderColor: errors.departamento ? '#dc2626' : '#000000',
+                      borderColor: errors.departamento ? '#dc2626' : '#9CA3AF',
                     },
                     '&.Mui-focused': {
-                      boxShadow: errors.departamento ? '0 0 0 2px rgba(220, 38, 38, 0.2)' : '0 0 0 2px rgba(0, 0, 0, 0.2)',
+                      borderColor: errors.departamento ? '#dc2626' : '#0F4AFF',
+                      boxShadow: errors.departamento ? '0 0 0 2px rgba(220, 38, 38, 0.2)' : '0 0 0 2px rgba(15, 74, 255, 0.25)',
                     },
                     '& .MuiSelect-select': {
                       py: '10px',
                       px: '12px',
-                      color: '#000000 !important',
+                      color: '#111827 !important',
                       fontWeight: 500,
                     },
                     '& .MuiSvgIcon-root': {
-                      color: '#000000 !important',
+                      color: '#6B7280 !important',
                     },
                   }}
                 >
-                  <MenuItem value="" sx={{ color: '#000000 !important', bgcolor: '#ffffff', fontWeight: 500 }}>
+                  <MenuItem value="" sx={{ color: '#111827 !important', bgcolor: '#ffffff', fontWeight: 500 }}>
                     Selecciona una dirección
                   </MenuItem>
                   {departmentsList.map((dept) => (
-                    <MenuItem key={dept.key} value={dept.key} sx={{ color: '#000000 !important', bgcolor: '#ffffff' }}>
+                    <MenuItem key={dept.key} value={dept.key} sx={{ color: '#111827 !important', bgcolor: '#ffffff' }}>
                       {dept.name}
                     </MenuItem>
                   ))}
@@ -291,23 +299,23 @@ export const MetaForm = () => {
                         bgcolor: '#ffffff !important',
                         backgroundColor: '#ffffff !important',
                         borderRadius: '8px',
-                        boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
-                        border: '1.5px solid #000000',
+                        boxShadow: '0 10px 25px rgba(0,0,0,0.1)',
+                        border: '1px solid #E5E7EB',
                         mt: 0.5,
                         '& .MuiMenuItem-root': {
                           fontSize: '13.5px',
-                          color: '#000000 !important',
+                          color: '#111827 !important',
                           fontWeight: 500,
                           whiteSpace: 'normal',
                           wordBreak: 'break-word',
                           py: 1,
                           '&:hover': {
                             bgcolor: '#f3f4f6 !important',
-                            color: '#000000 !important',
+                            color: '#111827 !important',
                           },
                           '&.Mui-selected': {
                             bgcolor: '#e5e7eb !important',
-                            color: '#000000 !important',
+                            color: '#111827 !important',
                             fontWeight: 700,
                             '&:hover': {
                               bgcolor: '#d1d5db !important',
@@ -339,36 +347,38 @@ export const MetaForm = () => {
                     bgcolor: '#ffffff',
                     borderRadius: '8px',
                     fontSize: '14px',
-                    color: '#000000',
+                    color: '#111827',
                     height: '42px',
-                    border: '1px solid #000000',
+                    border: '1px solid #D1D5DB',
+                    transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
                     '& .MuiOutlinedInput-notchedOutline': {
                       border: 'none',
                     },
                     '&:hover': {
-                      borderColor: '#000000',
+                      borderColor: '#9CA3AF',
                     },
                     '&.Mui-focused': {
-                      boxShadow: '0 0 0 2px rgba(0, 0, 0, 0.2)',
+                      borderColor: '#0F4AFF',
+                      boxShadow: '0 0 0 2px rgba(15, 74, 255, 0.25)',
                     },
                     '& .MuiSelect-select': {
                       py: '10px',
                       px: '12px',
-                      color: '#000000 !important',
+                      color: '#111827 !important',
                       fontWeight: 500,
                     },
                     '& .MuiSvgIcon-root': {
-                      color: '#000000 !important',
+                      color: '#6B7280 !important',
                     },
                   }}
                 >
-                  <MenuItem value="no-debe-superar" sx={{ color: '#000000 !important', bgcolor: '#ffffff' }}>
+                  <MenuItem value="no-debe-superar" sx={{ color: '#111827 !important', bgcolor: '#ffffff' }}>
                     No debe superar
                   </MenuItem>
-                  <MenuItem value="debe-alcanzar-o-superar" sx={{ color: '#000000 !important', bgcolor: '#ffffff' }}>
+                  <MenuItem value="debe-alcanzar-o-superar" sx={{ color: '#111827 !important', bgcolor: '#ffffff' }}>
                     Debe alcanzar o superar
                   </MenuItem>
-                  <MenuItem value="debe-mantenerse-en-rango" sx={{ color: '#000000 !important', bgcolor: '#ffffff' }}>
+                  <MenuItem value="debe-mantenerse-en-rango" sx={{ color: '#111827 !important', bgcolor: '#ffffff' }}>
                     Debe mantenerse en el rango
                   </MenuItem>
                 </Select>
@@ -455,23 +465,57 @@ export const MetaForm = () => {
                 </Box>
 
                 {/* Add Metric Trigger Button */}
-                <Box
-                  component="button"
-                  type="button"
-                  onClick={handleOpenAddMetric}
-                  sx={styles.btnAnadirMetrica}
+                <Tooltip 
+                  title={totalAporte >= 100 ? "La suma de aportes ya alcanza el 100%. No es posible añadir más métricas." : ""}
+                  arrow
+                  placement="top"
                 >
-                  <AddIcon sx={{ fontSize: 16 }} />
-                  Añadir métrica
-                </Box>
+                  <span>
+                    <Box
+                      component="button"
+                      type="button"
+                      onClick={handleOpenAddMetric}
+                      disabled={totalAporte >= 100}
+                      sx={styles.btnAnadirMetrica}
+                    >
+                      <AddIcon sx={{ fontSize: 16 }} />
+                      Añadir métrica
+                    </Box>
+                  </span>
+                </Tooltip>
               </Box>
 
-              {/* Metrics Warning */}
-              {metricas.length === 0 && (
+              {/* Alerta de 100% alcanzado al intentar añadir métrica */}
+              {metricLimitAlert && (
+                <Alert 
+                  severity="warning" 
+                  onClose={() => setMetricLimitAlert('')}
+                  sx={{ mb: 2, borderRadius: 2, fontSize: '13px' }}
+                >
+                  {metricLimitAlert}
+                </Alert>
+              )}
+
+              {/* Metrics Warning / Maxed Notice */}
+              {metricas.length === 0 ? (
                 <Box sx={styles.metricasWarn}>
                   <InfoIcon sx={{ fontSize: 16 }} />
                   <Typography variant="body2" sx={{ fontWeight: 500 }}>
                     Agrega al menos una métrica y asegura que sumen 100% (Actual: {totalAporte}%)
+                  </Typography>
+                </Box>
+              ) : totalAporte >= 100 ? (
+                <Box sx={styles.metricasMaxed}>
+                  <CheckIcon sx={{ fontSize: 16, color: '#16a34a' }} />
+                  <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                    Se ha cubierto el 100% del aporte ponderado de la meta. Para agregar una nueva métrica, primero reduce o edita el porcentaje de las existentes.
+                  </Typography>
+                </Box>
+              ) : (
+                <Box sx={styles.metricasWarn}>
+                  <InfoIcon sx={{ fontSize: 16 }} />
+                  <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                    Aún falta asignar un {100 - totalAporte}% para completar el 100% requerido (Actual: {totalAporte}%).
                   </Typography>
                 </Box>
               )}
@@ -582,6 +626,14 @@ export const MetaForm = () => {
             </Box>
             <Box 
               component="button" 
+              onClick={handleSaveDraft}
+              sx={styles.btnBorrador}
+            >
+              <DraftsIcon sx={{ fontSize: 16 }} />
+              Guardar borrador
+            </Box>
+            <Box 
+              component="button" 
               onClick={handleOpenPreview}
               sx={styles.btnPreview}
             >
@@ -593,8 +645,8 @@ export const MetaForm = () => {
               onClick={handleSaveMeta}
               sx={styles.btnGuardar}
             >
-              <SaveIcon sx={{ fontSize: 16 }} />
-              Guardar meta
+              <SendIcon sx={{ fontSize: 16 }} />
+              Publicar meta
             </Box>
           </Box>
         </Box>

@@ -6,12 +6,15 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
-    "test": "node --test"
+    "test": "node --test",
+    "test:e2e:reportes": "node scripts/e2e-reporte-excel.js",
+    "test:e2e:direcciones": "node scripts/e2e-reportes-direcciones.js"
   },
   "dependencies": {
     "bcryptjs": "3.0.3",
     "cors": "2.8.5",
     "dotenv": "16.4.5",
+    "exceljs": "4.4.0",
     "express": "4.19.2",
     "jsonwebtoken": "9.0.3",
     "multer": "2.2.0",

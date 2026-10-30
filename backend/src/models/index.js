@@ -9,6 +9,11 @@ const CampoPlantilla = require('./CampoPlantilla');
 const AuditCarga = require('./EntidadesAudit/AuditCarga');
 const AuditSesion = require('./EntidadesAudit/AuditSesion');
 
+// --- Reportes (PIADI-418) ---
+const Reporte = require('./Reporte');
+const ReporteEjecucion = require('./ReporteEjecucion');
+const EntradaAyuda = require('./EntradaAyuda');
+
 // --- Entidades de Indicadores (PIADI-150 / PIADI-153) ---
 const Department = require('./Department');
 const IndicatorDefinition = require('./IndicatorDefinition');
@@ -20,6 +25,11 @@ const Alumno = require('./EntidadesBBDD/Alumno');
 const Asignatura = require('./EntidadesBBDD/Asignatura');
 const MatriculaPorAsignatura = require('./EntidadesBBDD/MatriculaPorAsignatura');
 const CaracterizacionEstudiante = require('./EntidadesBBDD/CaracterizacionEstudiante');
+
+// --- Entidades BBDD Desarrollo Curricular ---
+const RendimientoAsignatura = require('./EntidadesBBDD/RendimientoAsignatura');
+const Practica = require('./EntidadesBBDD/Practica');
+const Titulacion = require('./EntidadesBBDD/Titulacion');
 
 // --- Entidades BBDD de Programas y Alumnos Externos ---
 const AlumnoExterno = require('./EntidadesBBDD/AlumnoExterno');
@@ -79,6 +89,19 @@ Asignatura.hasMany(MatriculaPorAsignatura, { foreignKey: 'ramoEquiv' });
 Alumno.hasOne(CaracterizacionEstudiante, { foreignKey: 'rut', sourceKey: 'rut', as: 'caracterizacion', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
 CaracterizacionEstudiante.belongsTo(Alumno, { foreignKey: 'rut', targetKey: 'rut', as: 'alumno' });
 
+// --- Asociaciones de Desarrollo Curricular ---
+Alumno.hasMany(RendimientoAsignatura, { foreignKey: 'rut', sourceKey: 'rut', as: 'rendimientos', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
+RendimientoAsignatura.belongsTo(Alumno, { foreignKey: 'rut', targetKey: 'rut', as: 'alumno' });
+
+Asignatura.hasMany(RendimientoAsignatura, { foreignKey: 'ramoEquiv', as: 'rendimientos', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
+RendimientoAsignatura.belongsTo(Asignatura, { foreignKey: 'ramoEquiv', as: 'asignatura' });
+
+Alumno.hasMany(Practica, { foreignKey: 'rut', sourceKey: 'rut', as: 'practicas', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
+Practica.belongsTo(Alumno, { foreignKey: 'rut', targetKey: 'rut', as: 'alumno' });
+
+Alumno.hasMany(Titulacion, { foreignKey: 'rut', sourceKey: 'rut', as: 'titulaciones', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
+Titulacion.belongsTo(Alumno, { foreignKey: 'rut', targetKey: 'rut', as: 'alumno' });
+
 // --- Asociaciones de Programas y Alumnos Externos ---
 Programa.hasOne(EstadoFinancieroPrograma, { foreignKey: 'idPrograma', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
 EstadoFinancieroPrograma.belongsTo(Programa, { foreignKey: 'idPrograma' });
@@ -133,6 +156,22 @@ MetaMetric.belongsTo(Meta, { foreignKey: 'metaId', as: 'meta', onDelete: 'CASCAD
 MetaMetric.belongsTo(IndicatorDefinition, { foreignKey: 'indicatorKey', targetKey: 'key', as: 'indicator', onDelete: 'RESTRICT', onUpdate: 'CASCADE' });
 IndicatorDefinition.hasMany(MetaMetric, { foreignKey: 'indicatorKey', sourceKey: 'key', as: 'metaMetrics' });
 
+// --- Asociaciones de Reportes (PIADI-418) ---
+Role.hasMany(Reporte, { foreignKey: 'roleId' });
+Reporte.belongsTo(Role, { foreignKey: 'roleId', as: 'role' });
+
+User.hasMany(Reporte, { foreignKey: 'createdBy', as: 'reportesCreados' });
+Reporte.belongsTo(User, { foreignKey: 'createdBy', as: 'creator' });
+
+Department.hasMany(Reporte, { foreignKey: 'departmentId', sourceKey: 'key', as: 'reportes' });
+Reporte.belongsTo(Department, { foreignKey: 'departmentId', targetKey: 'key', as: 'area' });
+
+Reporte.hasMany(ReporteEjecucion, { foreignKey: 'reporteId', as: 'ejecuciones', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
+ReporteEjecucion.belongsTo(Reporte, { foreignKey: 'reporteId', as: 'reporte', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
+
+User.hasMany(ReporteEjecucion, { foreignKey: 'solicitadoPor', as: 'reportesSolicitados' });
+ReporteEjecucion.belongsTo(User, { foreignKey: 'solicitadoPor', as: 'solicitante' });
+
 module.exports = {
   sequelize,
   Item,
@@ -144,6 +183,9 @@ module.exports = {
   Asignatura,
   MatriculaPorAsignatura,
   CaracterizacionEstudiante,
+  RendimientoAsignatura,
+  Practica,
+  Titulacion,
   AlumnoExterno,
   EstadoFinancieroPrograma,
   EstadoMatricula,
@@ -162,5 +204,8 @@ module.exports = {
   Department,
   IndicatorDefinition,
   Meta,
-  MetaMetric
+  MetaMetric,
+  Reporte,
+  ReporteEjecucion,
+  EntradaAyuda
 };

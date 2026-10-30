@@ -28,6 +28,10 @@ const ADMISSION_CHARACTERIZATION_GROUP_BY = [
   'tipoColegio', 'viaAcceso', 'nivelSocioeconomico', 'situacionFamiliar', 'beneficios'
 ];
 
+const CURRICULAR_RENDIMIENTO_GROUP_BY = ['year', 'periodo', 'asignatura', 'seccion'];
+const CURRICULAR_PRACTICA_GROUP_BY = ['year', 'periodo', 'tipoPractica', 'estado'];
+const CURRICULAR_TITULACION_GROUP_BY = ['year', 'cohorte'];
+
 const DIMENSION_LABELS = {
   area: 'Área',
   areaTematica: 'Área Temática',
@@ -80,17 +84,17 @@ const INDICATORS = {
   oferta_programada: { kind: 'program', formulaKey: 'COUNT_PROGRAMMED_OFFER', allowedGroupBy: PROGRAM_GROUP_BY },
   cursos_dictados: { kind: 'program', formulaKey: 'COUNT_COURSES_DICTATED', allowedGroupBy: PROGRAM_GROUP_BY },
   tasa_ejecucion: { kind: 'program', formulaKey: 'EXECUTION_RATE', allowedGroupBy: PROGRAM_GROUP_BY },
-  matricula_por_programa: { kind: 'program', formulaKey: 'ENROLLMENT_TOTAL', allowedGroupBy: PROGRAM_GROUP_BY_EXT },
+  matricula_por_programa: { kind: 'program', formulaKey: 'ENROLLMENT_TOTAL', allowedGroupBy: PROGRAM_GROUP_BY_EXT, defaultGroupBy: 'programa' },
   tasa_aprobacion: { kind: 'program', formulaKey: 'APPROVAL_RATE', allowedGroupBy: PROGRAM_GROUP_BY_EXT },
   ingresos_generados: { kind: 'program', formulaKey: 'REVENUE_SUM', allowedGroupBy: PROGRAM_GROUP_BY_EXT },
   ticket_promedio: { kind: 'program', formulaKey: 'AVERAGE_TICKET', allowedGroupBy: PROGRAM_GROUP_BY_EXT },
   participantes_unicos: { kind: 'participant', formulaKey: 'UNIQUE_PARTICIPANTS', allowedGroupBy: ['year', 'sexo', 'rangoEdad', 'area', 'tipo', 'modalidad'] },
-  perfil_participante: { kind: 'participant', formulaKey: 'PARTICIPANT_PROFILE', allowedGroupBy: ['sexo', 'rangoEdad', 'region', 'nivelDeEstudio', 'tipoParticipante', 'sectorEconomico'] },
+  perfil_participante: { kind: 'participant', formulaKey: 'PARTICIPANT_PROFILE', allowedGroupBy: ['sexo', 'rangoEdad', 'region', 'nivelDeEstudio', 'tipoParticipante', 'sectorEconomico'], defaultGroupBy: 'sexo' },
   recurrencia_formativa: { kind: 'participant', formulaKey: 'TRAINING_RECURRENCE', allowedGroupBy: ['year', 'sexo', 'rangoEdad', 'area', 'tipo', 'modalidad'] },
 
   // Vinculación con el Medio (VCM)
   total_convenios: { kind: 'vcm_convenio', formulaKey: 'COUNT_CONVENIOS', allowedGroupBy: VCM_CONVENIO_GROUP_BY },
-  convenios_por_sector: { kind: 'vcm_convenio', formulaKey: 'CONVENIOS_BY_SECTOR', allowedGroupBy: VCM_CONVENIO_GROUP_BY },
+  convenios_por_sector: { kind: 'vcm_convenio', formulaKey: 'CONVENIOS_BY_SECTOR', allowedGroupBy: VCM_CONVENIO_GROUP_BY, defaultGroupBy: 'sector' },
   convenios_activos: { kind: 'vcm_convenio', formulaKey: 'COUNT_ACTIVE_CONVENIOS', allowedGroupBy: VCM_CONVENIO_GROUP_BY },
   actividades_realizadas: { kind: 'vcm_actividad', formulaKey: 'COUNT_ACTIVITIES', allowedGroupBy: VCM_ACTIVIDAD_GROUP_BY },
   participaciones: { kind: 'vcm_participacion', formulaKey: 'PARTICIPACIONES_SUM', allowedGroupBy: VCM_PARTICIPACION_GROUP_BY },
@@ -108,21 +112,35 @@ const INDICATORS = {
   docentes_involucrados: { kind: 'innovation_project', formulaKey: 'SUM_INNOVATION_TEACHERS', allowedGroupBy: INNOVACION_PROJECT_GROUP_BY },
 
   // Admisión - Matrícula y Académico
-  matricula_total: { kind: 'admission_enrollment', formulaKey: 'COUNT_ADMISSION_ENROLLMENT_TOTAL', allowedGroupBy: ADMISSION_ENROLLMENT_GROUP_BY },
-  nuevos_vs_antiguos: { kind: 'admission_enrollment', formulaKey: 'COUNT_ADMISSION_NEW_VS_OLD', allowedGroupBy: ADMISSION_ENROLLMENT_GROUP_BY },
-  matricula_por_asignatura: { kind: 'admission_enrollment', formulaKey: 'COUNT_ADMISSION_BY_COURSE', allowedGroupBy: ADMISSION_ENROLLMENT_GROUP_BY },
-  matricula_por_seccion: { kind: 'admission_enrollment', formulaKey: 'COUNT_ADMISSION_BY_SECTION', allowedGroupBy: ADMISSION_ENROLLMENT_GROUP_BY },
-  matricula_por_estado_academico: { kind: 'admission_enrollment', formulaKey: 'COUNT_ADMISSION_BY_ACADEMIC_STATUS', allowedGroupBy: ADMISSION_ENROLLMENT_GROUP_BY },
+  matricula_total: { kind: 'admission_enrollment', formulaKey: 'COUNT_ADMISSION_ENROLLMENT_TOTAL', allowedGroupBy: ADMISSION_ENROLLMENT_GROUP_BY, defaultGroupBy: 'periodo' },
+  nuevos_vs_antiguos: { kind: 'admission_enrollment', formulaKey: 'COUNT_ADMISSION_NEW_VS_OLD', allowedGroupBy: ADMISSION_ENROLLMENT_GROUP_BY, defaultGroupBy: 'nuevoAntiguo' },
+  matricula_por_asignatura: { kind: 'admission_enrollment', formulaKey: 'COUNT_ADMISSION_BY_COURSE', allowedGroupBy: ADMISSION_ENROLLMENT_GROUP_BY, defaultGroupBy: 'asignatura' },
+  matricula_por_seccion: { kind: 'admission_enrollment', formulaKey: 'COUNT_ADMISSION_BY_SECTION', allowedGroupBy: ADMISSION_ENROLLMENT_GROUP_BY, defaultGroupBy: 'seccion' },
+  matricula_por_estado_academico: { kind: 'admission_enrollment', formulaKey: 'COUNT_ADMISSION_BY_ACADEMIC_STATUS', allowedGroupBy: ADMISSION_ENROLLMENT_GROUP_BY, defaultGroupBy: 'estadoAcademico' },
 
   // Admisión - Caracterización del Estudiante
-  nivel_socioeconomico: { kind: 'admission_characterization', formulaKey: 'DISTRIBUTION_ADMISSION_SOCIOECONOMIC', allowedGroupBy: ADMISSION_CHARACTERIZATION_GROUP_BY },
-  situacion_familiar: { kind: 'admission_characterization', formulaKey: 'DISTRIBUTION_ADMISSION_FAMILY_SITUATION', allowedGroupBy: ADMISSION_CHARACTERIZATION_GROUP_BY },
-  procedencia_geografica: { kind: 'admission_characterization', formulaKey: 'DISTRIBUTION_ADMISSION_GEOGRAPHY', allowedGroupBy: ADMISSION_CHARACTERIZATION_GROUP_BY },
-  tipo_colegio: { kind: 'admission_characterization', formulaKey: 'DISTRIBUTION_ADMISSION_SCHOOL_TYPE', allowedGroupBy: ADMISSION_CHARACTERIZATION_GROUP_BY },
-  via_acceso: { kind: 'admission_characterization', formulaKey: 'DISTRIBUTION_ADMISSION_ACCESS_ROUTE', allowedGroupBy: ADMISSION_CHARACTERIZATION_GROUP_BY },
-  beneficios_becas: { kind: 'admission_characterization', formulaKey: 'DISTRIBUTION_ADMISSION_BENEFITS', allowedGroupBy: ADMISSION_CHARACTERIZATION_GROUP_BY },
-  distribucion_sexo: { kind: 'admission_characterization', formulaKey: 'DISTRIBUTION_ADMISSION_GENDER', allowedGroupBy: ADMISSION_CHARACTERIZATION_GROUP_BY },
-  rango_etario: { kind: 'admission_characterization', formulaKey: 'DISTRIBUTION_ADMISSION_AGE_RANGE', allowedGroupBy: ADMISSION_CHARACTERIZATION_GROUP_BY }
+  nivel_socioeconomico: { kind: 'admission_characterization', formulaKey: 'DISTRIBUTION_ADMISSION_SOCIOECONOMIC', allowedGroupBy: ADMISSION_CHARACTERIZATION_GROUP_BY, defaultGroupBy: 'nivelSocioeconomico' },
+  situacion_familiar: { kind: 'admission_characterization', formulaKey: 'DISTRIBUTION_ADMISSION_FAMILY_SITUATION', allowedGroupBy: ADMISSION_CHARACTERIZATION_GROUP_BY, defaultGroupBy: 'situacionFamiliar' },
+  procedencia_geografica: { kind: 'admission_characterization', formulaKey: 'DISTRIBUTION_ADMISSION_GEOGRAPHY', allowedGroupBy: ADMISSION_CHARACTERIZATION_GROUP_BY, defaultGroupBy: 'region' },
+  tipo_colegio: { kind: 'admission_characterization', formulaKey: 'DISTRIBUTION_ADMISSION_SCHOOL_TYPE', allowedGroupBy: ADMISSION_CHARACTERIZATION_GROUP_BY, defaultGroupBy: 'tipoColegio' },
+  via_acceso: { kind: 'admission_characterization', formulaKey: 'DISTRIBUTION_ADMISSION_ACCESS_ROUTE', allowedGroupBy: ADMISSION_CHARACTERIZATION_GROUP_BY, defaultGroupBy: 'viaAcceso' },
+  beneficios_becas: { kind: 'admission_characterization', formulaKey: 'DISTRIBUTION_ADMISSION_BENEFITS', allowedGroupBy: ADMISSION_CHARACTERIZATION_GROUP_BY, defaultGroupBy: 'beneficios' },
+  distribucion_sexo: { kind: 'admission_characterization', formulaKey: 'DISTRIBUTION_ADMISSION_GENDER', allowedGroupBy: ADMISSION_CHARACTERIZATION_GROUP_BY, defaultGroupBy: 'sexo' },
+  rango_etario: { kind: 'admission_characterization', formulaKey: 'DISTRIBUTION_ADMISSION_AGE_RANGE', allowedGroupBy: ADMISSION_CHARACTERIZATION_GROUP_BY, defaultGroupBy: 'rangoEtario' },
+
+  // Desarrollo Curricular - Rendimiento Académico
+  tasa_aprobacion_asignatura: { kind: 'curricular_rendimiento', formulaKey: 'APPROVAL_RATE_BY_COURSE', allowedGroupBy: CURRICULAR_RENDIMIENTO_GROUP_BY, defaultGroupBy: 'asignatura' },
+  tasa_reprobacion_asignatura: { kind: 'curricular_rendimiento', formulaKey: 'FAILURE_RATE_BY_COURSE', allowedGroupBy: CURRICULAR_RENDIMIENTO_GROUP_BY, defaultGroupBy: 'asignatura' },
+  asignaturas_criticas: { kind: 'curricular_rendimiento', formulaKey: 'CRITICAL_COURSES', allowedGroupBy: CURRICULAR_RENDIMIENTO_GROUP_BY, defaultGroupBy: 'asignatura' },
+
+  // Desarrollo Curricular - Prácticas
+  practicas_inscritas: { kind: 'curricular_practica', formulaKey: 'COUNT_ENROLLED_INTERNSHIPS', allowedGroupBy: CURRICULAR_PRACTICA_GROUP_BY },
+  practicas_aprobadas: { kind: 'curricular_practica', formulaKey: 'COUNT_APPROVED_INTERNSHIPS', allowedGroupBy: CURRICULAR_PRACTICA_GROUP_BY },
+
+  // Desarrollo Curricular - Titulación
+  tasa_titulacion_cohorte: { kind: 'curricular_titulacion', formulaKey: 'GRADUATION_RATE_BY_COHORT', allowedGroupBy: ['cohorte', 'year'] },
+  titulados_por_anio: { kind: 'curricular_titulacion', formulaKey: 'COUNT_GRADUATES_BY_YEAR', allowedGroupBy: ['year'] },
+  tiempo_promedio_titulacion: { kind: 'curricular_titulacion', formulaKey: 'AVERAGE_GRADUATION_TIME', allowedGroupBy: CURRICULAR_TITULACION_GROUP_BY }
 };
 
 const PARTICIPANT_FORMULAS = ['UNIQUE_PARTICIPANTS', 'PARTICIPANT_PROFILE', 'TRAINING_RECURRENCE'];
@@ -156,6 +174,23 @@ const ADMISSION_CHARACTERIZATION_FORMULAS = [
   'DISTRIBUTION_ADMISSION_AGE_RANGE'
 ];
 
+const CURRICULAR_RENDIMIENTO_FORMULAS = [
+  'APPROVAL_RATE_BY_COURSE',
+  'FAILURE_RATE_BY_COURSE',
+  'CRITICAL_COURSES'
+];
+
+const CURRICULAR_PRACTICA_FORMULAS = [
+  'COUNT_ENROLLED_INTERNSHIPS',
+  'COUNT_APPROVED_INTERNSHIPS'
+];
+
+const CURRICULAR_TITULACION_FORMULAS = [
+  'GRADUATION_RATE_BY_COHORT',
+  'COUNT_GRADUATES_BY_YEAR',
+  'AVERAGE_GRADUATION_TIME'
+];
+
 const getIndicatorConfig = (indicatorKey, definition = null) => {
   if (INDICATORS[indicatorKey]) {
     return INDICATORS[indicatorKey];
@@ -170,6 +205,12 @@ const getIndicatorConfig = (indicatorKey, definition = null) => {
       kind = 'admission_enrollment';
     } else if (ADMISSION_CHARACTERIZATION_FORMULAS.includes(definition.formulaKey)) {
       kind = 'admission_characterization';
+    } else if (CURRICULAR_RENDIMIENTO_FORMULAS.includes(definition.formulaKey)) {
+      kind = 'curricular_rendimiento';
+    } else if (CURRICULAR_PRACTICA_FORMULAS.includes(definition.formulaKey)) {
+      kind = 'curricular_practica';
+    } else if (CURRICULAR_TITULACION_FORMULAS.includes(definition.formulaKey)) {
+      kind = 'curricular_titulacion';
     }
     return {
       kind,

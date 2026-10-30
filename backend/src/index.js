@@ -13,7 +13,10 @@ const dashboardRoutes = require('./routes/dashboardRoutes');
 const auditRoutes = require('./routes/auditRoutes');
 const metaRoutes = require('./routes/metaRoutes');
 const landingRoutes = require('./routes/landingRoutes');
+const reporteRoutes = require('./routes/reporteRoutes');
+const helpRoutes = require('./routes/helpRoutes');
 const errorHandler = require('./middleware/errorHandler');
+const { startMetaClosureScheduler } = require('./services/metaClosureScheduler');
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -45,6 +48,12 @@ app.use('/api', dashboardRoutes);
 app.use('/api', auditRoutes);
 app.use('/api/metas', metaRoutes);
 app.use('/api/landing', landingRoutes);
+app.use('/api/help', helpRoutes);
+
+// Reportes (PIADI-418). Activo por defecto; desactivar con REPORTES_ENABLED=false.
+if (process.env.REPORTES_ENABLED !== 'false') {
+  app.use('/api/reportes', reporteRoutes);
+}
 
 // Registar Middleware Centralizado de Errores (Siempre después de las rutas)
 app.use(errorHandler);
@@ -59,6 +68,14 @@ async function initDb(retries = 5, delay = 2000) {
       
       await sequelize.sync();
       console.log('Database synced successfully. Models mapped to tables.');
+
+      const { migrateMetaLifecycle } = require('./migrations/20261024-meta-lifecycle');
+      await migrateMetaLifecycle();
+      const { migrateMetaClosure } = require('./migrations/20261025-meta-closure');
+      await migrateMetaClosure();
+
+      const { migrateHelpAdmin } = require('./migrations/20261025-help-admin');
+      await migrateHelpAdmin();
 
       const {
         preparePlantillaDepartmentMigration,
@@ -90,10 +107,16 @@ async function initDb(retries = 5, delay = 2000) {
 }
 
 const startServer = async () => {
-  await initDb();
+  let databaseReady = await initDb();
   app.listen(port, () => {
     console.log(`Backend server running on port ${port}`);
     console.log(`Swagger docs available at http://localhost:${port}/api-docs`);
+  });
+  startMetaClosureScheduler({
+    ensureReady: async () => {
+      if (!databaseReady) databaseReady = await initDb(1);
+      return databaseReady;
+    }
   });
 };
 

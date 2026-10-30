@@ -451,8 +451,16 @@ router.get('/indicators/:indicatorKey/breakdown', authenticateToken, indicatorCo
  *         schema: { type: string }
  *       - in: query
  *         name: groupBy
- *         description: Dimensión de desagregación; debe estar en allowedGroupBy del indicador.
+ *         description: Dimensión explícita prevalece sobre defaultGroupBy del catálogo (matricula_por_asignatura usa asignatura). Un valor vacío desactiva el default; year devuelve la vista temporal agregada. Debe estar en allowedGroupBy del indicador.
  *         schema: { type: string }
+  *       - in: query
+  *         name: splitBy
+  *         description: Segunda dimensión opcional de matriz. Requiere groupBy explícito o defaultGroupBy; groupBy vacío no es válido. Sin splitBy el contrato anterior no cambia. year filtra la matriz al año de referencia; fromYear/toYear la limitan al rango cuando no hay year.
+  *         schema: { type: string }
+  *       - in: query
+  *         name: splitBy2
+  *         description: Tercera dimensión opcional de cubo. Requiere groupBy y splitBy distintos; las tres dimensiones deben estar en allowedGroupBy. Ejemplo beneficios_becas con groupBy=beneficios, splitBy=periodo, splitBy2=sexo y year=2025. Sin splitBy2 se conserva exactamente la matriz 2D. El cubo por sexo de participaciones VcM no está disponible porque su fuente contiene contadores agregados.
+  *         schema: { type: string }
  *     responses:
  *       200:
  *         description: Detalle del indicador con serie por año, tabla y comparación.
@@ -497,7 +505,43 @@ router.get('/indicators/:indicatorKey/breakdown', authenticateToken, indicatorCo
  *                 series:
  *                   type: array
  *                   items: { type: object }
- *       400: { description: Filtros inválidos. }
+  *                 isBidimensional: { type: boolean, description: Solo presente con splitBy. }
+  *                 rowDimension: { type: string }
+  *                 colDimension: { type: string }
+  *                 columns:
+  *                   type: array
+  *                   description: IDs tipados y ordenados de columnas; no son las etiquetas visibles.
+  *                   items: { type: string }
+  *                 columnLabels:
+  *                   type: object
+  *                   description: Mapa de ID a etiqueta visible. periodos se ordenan numéricamente.
+  *                   additionalProperties: { type: string }
+  *                 matrix:
+  *                   type: array
+  *                   description: Cada fila contiene row, rowKey, values (ID de columna a valor o null) y total recalculado.
+  *                   items: { type: object }
+  *                 totals:
+  *                   type: object
+  *                   description: Totales por columna y general recalculados desde registros; general puede diferir de total, que conserva el KPI del año de referencia.
+  *                   properties:
+  *                     columns: { type: object }
+  *                     general: { type: number, nullable: true }
+  *                 matrixFilters: { type: object, description: Alcance temporal y filtros aplicados a la matriz. }
+  *                 isTridimensional: { type: boolean, description: Solo presente con splitBy2; no reemplaza el contrato de matrix. }
+  *                 depthDimension: { type: string, description: Tercera dimensión del cubo. }
+  *                 depths:
+  *                   type: array
+  *                   description: IDs tipados y ordenados de subcategorías.
+  *                   items: { type: string }
+  *                 depthLabels:
+  *                   type: object
+  *                   description: Etiquetas visibles por ID de subcategoría; los valores nulos conservan su ID propio.
+  *                   additionalProperties: { type: string }
+  *                 cube:
+  *                   type: array
+  *                   description: Solo con splitBy2. Cada fila tiene row, rowKey, total y values; cada values[columnId] contiene total y depthValues[depthId]. Los totales se recalculan desde filas fuente. Una intersección sin registros es null; cero calculado sigue siendo 0. Máximos por defecto 50 filas, 20 columnas, 10 subcategorías y 10000 intersecciones posibles.
+  *                   items: { type: object }
+  *       400: { description: Filtros o dimensiones inválidos (INVALID_SPLIT_BY, INVALID_SPLIT_BY2, INVALID_GROUP_BY, MISSING_ROW_DIMENSION, MISSING_COLUMN_DIMENSION, DUPLICATE_GROUP_DIMENSIONS, UNSUPPORTED_GROUP_DIMENSION, MATRIX_LIMIT_EXCEEDED). }
  *       401: { description: Token ausente o inválido. }
  *       404: { description: Indicador inexistente. }
  */

@@ -7,6 +7,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../auth';
 import { getDepartments, getDepartmentKpis, createMeta, updateMeta } from '../../../services/piadiApi';
 import { canCreateMeta, isRectoria } from '../metaAccess';
+import { deriveAnio, derivePeriodo } from '../metaDateUtils';
 
 export const METRICAS_POOL = [
   'Total de deserciones', 
@@ -130,6 +131,7 @@ export const useMetaForm = () => {
     limite: false,
   });
   const [showSaveAlert, setShowSaveAlert] = useState(false);
+  const [metricLimitAlert, setMetricLimitAlert] = useState('');
   const [showSuccessAlert, setShowSuccessAlert] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [successDesc, setSuccessDesc] = useState('');
@@ -156,6 +158,13 @@ export const useMetaForm = () => {
     return metricas.reduce((acc, curr) => acc + Number(curr.aporte), 0);
   }, [metricas]);
 
+  // Limpiar aviso de límite de métricas cuando el total baje de 100%
+  useEffect(() => {
+    if (totalAporte < 100 && metricLimitAlert) {
+      setMetricLimitAlert('');
+    }
+  }, [totalAporte, metricLimitAlert]);
+
   // Filter metrics pool for search
   const filteredMetricsPool = useMemo(() => {
     const pool = kpisList.map(k => k.name);
@@ -170,6 +179,11 @@ export const useMetaForm = () => {
 
   // Add/Edit Metric Modal Actions
   const handleOpenAddMetric = () => {
+    if (totalAporte >= 100) {
+      setMetricLimitAlert('La suma de aportes ya alcanza el 100%. Para añadir otra métrica, reduce o edita el porcentaje de las existentes.');
+      return;
+    }
+    setMetricLimitAlert('');
     setEditMetricIndex(null);
     setMetricSearch('');
     setMetricNombre('');
@@ -276,6 +290,73 @@ export const useMetaForm = () => {
   };
 
   // Form Actions (Save, Preview, Mode change)
+  const validateDraftForm = () => {
+    const isDateInvalid = inicio && limite && new Date(limite) < new Date(inicio);
+    const nextErrors = {
+      nombre: !nombre.trim(),
+      departamento: !departamento,
+      inicio: !inicio,
+      limite: !limite || isDateInvalid,
+    };
+    setErrors(nextErrors);
+    const hasFieldErrors = Object.values(nextErrors).some(Boolean);
+    if (hasFieldErrors) {
+      setShowSaveAlert(true);
+      return false;
+    }
+    setShowSaveAlert(false);
+    return true;
+  };
+
+  const handleSaveDraft = async () => {
+    if (!validateDraftForm()) return;
+    try {
+      const derivedAnio = deriveAnio(inicio);
+      const derivedPeriodo = derivePeriodo(inicio, limite);
+
+      const payload = {
+        lifecycleStatus: 'BORRADOR',
+        departmentId: departamento || null,
+        anio: derivedAnio,
+        periodo: derivedPeriodo,
+        nombre: nombre,
+        inicio: inicio || null,
+        limite: limite || null,
+        fechaInicio: inicio || null,
+        fechaLimite: limite || null,
+        prioridad: prioridad || null,
+        comportamiento: comportamiento || null,
+        draftMetrics: metricas.map((m) => ({
+          indicatorKey: m.key || null,
+          weight: m.aporte !== '' && m.aporte !== null && m.aporte !== undefined ? Number(m.aporte) : null,
+          behavior: m.comportamiento || null,
+          targetValue: m.valor !== '' && m.valor !== null && m.valor !== undefined ? Number(m.valor) : null,
+          valueType: m.tipoValor === 'numerico' ? 'number' : (m.tipoValor === 'porcentaje' ? 'percentage' : (m.tipoValor || null)),
+          lowerLimit: m.lowerLimit !== undefined && m.lowerLimit !== null && m.lowerLimit !== '' ? Number(m.lowerLimit) : null,
+          upperLimit: m.upperLimit !== undefined && m.upperLimit !== null && m.upperLimit !== '' ? Number(m.upperLimit) : null
+        }))
+      };
+
+      await createMeta(payload);
+
+      setSuccessMsg('Borrador guardado con éxito');
+      setSuccessDesc('La meta se ha guardado como borrador. Podrás continuar completándola y publicarla en cualquier momento.');
+      setShowSuccessAlert(true);
+
+      // Limpiar campos del formulario
+      setNombre('');
+      setDepartamento(isRectoria(user) ? '' : (user?.departmentId || ''));
+      setComportamiento('no-debe-superar');
+      setInicio('');
+      setLimite('');
+      setPrioridad('media');
+      setMetricas([]);
+    } catch (err) {
+      console.error('Error saving draft:', err);
+      alert(err.message || 'Hubo un error al guardar el borrador.');
+    }
+  };
+
   const validateForm = () => {
     const isDateInvalid = inicio && limite && new Date(limite) < new Date(inicio);
     const nextErrors = {
@@ -299,13 +380,19 @@ export const useMetaForm = () => {
   const handleSaveMeta = async () => {
     if (!validateForm()) return;
     try {
+      const derivedAnio = deriveAnio(inicio);
+      const derivedPeriodo = derivePeriodo(inicio, limite);
+
       const payload = {
+        lifecycleStatus: 'ACTIVA',
         departmentId: departamento || null,
-        anio: 2026, // Default 2026 as requested by the user
-        periodo: 'Anual',
+        anio: derivedAnio,
+        periodo: derivedPeriodo,
         nombre: nombre,
         inicio: inicio || null,
         limite: limite || null,
+        fechaInicio: inicio || null,
+        fechaLimite: limite || null,
         prioridad: prioridad || null,
         comportamiento: comportamiento || null,
         metrics: metricas.map((m) => ({
@@ -319,14 +406,10 @@ export const useMetaForm = () => {
         }))
       };
 
-      if (modo === 'crear') {
-        await createMeta(payload);
-      } else {
-        await updateMeta(id, payload);
-      }
+      await createMeta(payload);
 
-      setSuccessMsg(modo === 'crear' ? 'Meta creada con éxito' : 'Meta guardada con éxito');
-      setSuccessDesc(modo === 'crear' ? 'La meta se ha creado correctamente.' : 'La meta se ha editado correctamente.');
+      setSuccessMsg('Meta publicada con éxito');
+      setSuccessDesc('La meta se ha publicado correctamente. Ya se encuentra activa y calculando su cumplimiento.');
       setShowSuccessAlert(true);
 
       // Limpiar campos del formulario
@@ -337,11 +420,6 @@ export const useMetaForm = () => {
       setLimite('');
       setPrioridad('media');
       setMetricas([]);
-
-      if (modo === 'editar') {
-        setModo('crear');
-        navigate('/meta-form');
-      }
     } catch (err) {
       console.error('Error saving meta:', err);
       alert('Hubo un error al guardar la meta.');
@@ -389,6 +467,8 @@ export const useMetaForm = () => {
     errors,
     showSaveAlert,
     setShowSaveAlert,
+    metricLimitAlert,
+    setMetricLimitAlert,
     showSuccessAlert,
     setShowSuccessAlert,
     successMsg,
@@ -423,6 +503,7 @@ export const useMetaForm = () => {
     handleOpenEditMetric,
     handleSaveMetric,
     handleDeleteMetric,
+    handleSaveDraft,
     handleSaveMeta,
     handleOpenPreview
   };

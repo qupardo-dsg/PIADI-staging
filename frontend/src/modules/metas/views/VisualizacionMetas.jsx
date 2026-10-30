@@ -1,7 +1,7 @@
 import React from 'react';
 import { useVisualizacionMetas } from './VisualizacionMetas.hooks';
 import { styles } from './VisualizacionMetas.styles';
-import { Header, Sidebar } from '../../../components';
+import { Header, Sidebar, CentroDeAyuda } from '../../../components';
 import {
   Box,
   Typography,
@@ -16,6 +16,7 @@ import {
   AccordionDetails,
   Select,
   MenuItem,
+  Tooltip,
 } from '@mui/material';
 import {
   Close as CloseIcon,
@@ -35,6 +36,9 @@ import {
   ChevronLeft as ChevronLeftIcon,
   ChevronRight as ChevronRightIcon,
   RestartAlt as ResetIcon,
+  Lock as LockIcon,
+  Drafts as DraftsIcon,
+  Visibility as VisibilityIcon,
 } from '@mui/icons-material';
 
 export const VisualizacionMetas = () => {
@@ -42,8 +46,6 @@ export const VisualizacionMetas = () => {
     navigate,
     user,
     canCreateMeta,
-    openHelpDialog,
-    setOpenHelpDialog,
     filtersVisible,
     handleToggleFilters,
     handleResetFilters,
@@ -72,7 +74,6 @@ export const VisualizacionMetas = () => {
     pageSize,
     fmtFecha,
     diasHasta,
-    faqData,
     loading,
     error,
     kpis,
@@ -81,6 +82,11 @@ export const VisualizacionMetas = () => {
     handleOpenDeleteDialog,
     handleCloseDeleteDialog,
     handleConfirmDelete,
+    closeDialogOpen,
+    handleOpenCloseDialog,
+    handleCloseCloseDialog,
+    handleConfirmClose,
+    isClosingMeta,
   } = useVisualizacionMetas();
 
   // Sorting Helper Labels
@@ -146,6 +152,19 @@ export const VisualizacionMetas = () => {
               </Box>
               <Typography sx={styles.kpiValue}>{kpis.riesgo}</Typography>
             </Box>
+
+            {/* Card 4: Borradores (si existen) */}
+            {kpis.borradores > 0 && (
+              <Box sx={styles.kpiCard}>
+                <Box sx={styles.kpiHeader}>
+                  <Typography sx={styles.kpiLabel}>Borradores</Typography>
+                  <Box sx={{ ...styles.kpiIcon, bgcolor: 'rgba(245, 158, 11, 0.12)', color: '#d97706' }}>
+                    <DraftsIcon />
+                  </Box>
+                </Box>
+                <Typography sx={{ ...styles.kpiValue, color: '#d97706' }}>{kpis.borradores}</Typography>
+              </Box>
+            )}
           </Box>
         )}
 
@@ -286,23 +305,23 @@ export const VisualizacionMetas = () => {
                         bgcolor: '#ffffff !important',
                         backgroundColor: '#ffffff !important',
                         borderRadius: '8px',
-                        boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
-                        border: '1.5px solid #000000',
+                        boxShadow: '0 10px 25px rgba(0,0,0,0.1)',
+                        border: '1px solid #E5E7EB',
                         mt: 0.5,
                         '& .MuiMenuItem-root': {
                           fontSize: '13.5px',
-                          color: '#000000 !important',
+                          color: '#111827 !important',
                           fontWeight: 500,
                           whiteSpace: 'normal',
                           wordBreak: 'break-word',
                           py: 1,
                           '&:hover': {
                             bgcolor: '#f3f4f6 !important',
-                            color: '#000000 !important',
+                            color: '#111827 !important',
                           },
                           '&.Mui-selected': {
                             bgcolor: '#e5e7eb !important',
-                            color: '#000000 !important',
+                            color: '#111827 !important',
                             fontWeight: 700,
                             '&:hover': {
                               bgcolor: '#d1d5db !important',
@@ -334,34 +353,36 @@ export const VisualizacionMetas = () => {
                     bgcolor: '#ffffff',
                     borderRadius: '8px',
                     fontSize: '14px',
-                    color: '#000000',
+                    color: '#111827',
                     height: '38px',
-                    border: '1px solid #000000',
+                    border: '1px solid #D1D5DB',
+                    transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
                     '& .MuiOutlinedInput-notchedOutline': {
                       border: 'none',
                     },
                     '&:hover': {
-                      borderColor: '#000000',
+                      borderColor: '#9CA3AF',
                     },
                     '&.Mui-focused': {
-                      boxShadow: '0 0 0 2px rgba(0, 0, 0, 0.2)',
+                      borderColor: '#1E2875',
+                      boxShadow: '0 0 0 2px rgba(30, 40, 117, 0.15)',
                     },
                     '& .MuiSelect-select': {
                       py: '8px',
                       px: '12px',
-                      color: '#000000 !important',
+                      color: '#111827 !important',
                       fontWeight: 500,
                     },
                     '& .MuiSvgIcon-root': {
-                      color: '#000000 !important',
+                      color: '#6B7280 !important',
                     },
                   }}
                 >
-                  <MenuItem value="todas" sx={{ color: '#000000 !important', bgcolor: '#ffffff' }}>
+                  <MenuItem value="todas" sx={{ color: '#111827 !important', bgcolor: '#ffffff' }}>
                     Todas
                   </MenuItem>
                   {departmentsList.map((dept) => (
-                    <MenuItem key={dept.key} value={dept.key} sx={{ color: '#000000 !important', bgcolor: '#ffffff' }}>
+                    <MenuItem key={dept.key} value={dept.key} sx={{ color: '#111827 !important', bgcolor: '#ffffff' }}>
                       {dept.name}
                     </MenuItem>
                   ))}
@@ -389,23 +410,23 @@ export const VisualizacionMetas = () => {
                         bgcolor: '#ffffff !important',
                         backgroundColor: '#ffffff !important',
                         borderRadius: '8px',
-                        boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
-                        border: '1.5px solid #000000',
+                        boxShadow: '0 10px 25px rgba(0,0,0,0.1)',
+                        border: '1px solid #E5E7EB',
                         mt: 0.5,
                         '& .MuiMenuItem-root': {
                           fontSize: '13.5px',
-                          color: '#000000 !important',
+                          color: '#111827 !important',
                           fontWeight: 500,
                           whiteSpace: 'normal',
                           wordBreak: 'break-word',
                           py: 1,
                           '&:hover': {
                             bgcolor: '#f3f4f6 !important',
-                            color: '#000000 !important',
+                            color: '#111827 !important',
                           },
                           '&.Mui-selected': {
                             bgcolor: '#e5e7eb !important',
-                            color: '#000000 !important',
+                            color: '#111827 !important',
                             fontWeight: 700,
                             '&:hover': {
                               bgcolor: '#d1d5db !important',
@@ -437,39 +458,50 @@ export const VisualizacionMetas = () => {
                     bgcolor: '#ffffff',
                     borderRadius: '8px',
                     fontSize: '14px',
-                    color: '#000000',
+                    color: '#111827',
                     height: '38px',
-                    border: '1px solid #000000',
+                    border: '1px solid #D1D5DB',
+                    transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
                     '& .MuiOutlinedInput-notchedOutline': {
                       border: 'none',
                     },
                     '&:hover': {
-                      borderColor: '#000000',
+                      borderColor: '#9CA3AF',
                     },
                     '&.Mui-focused': {
-                      boxShadow: '0 0 0 2px rgba(0, 0, 0, 0.2)',
+                      borderColor: '#1E2875',
+                      boxShadow: '0 0 0 2px rgba(30, 40, 117, 0.15)',
                     },
                     '& .MuiSelect-select': {
                       py: '8px',
                       px: '12px',
-                      color: '#000000 !important',
+                      color: '#111827 !important',
                       fontWeight: 500,
                     },
                     '& .MuiSvgIcon-root': {
-                      color: '#000000 !important',
+                      color: '#6B7280 !important',
                     },
                   }}
                 >
-                  <MenuItem value="todos" sx={{ color: '#000000 !important', bgcolor: '#ffffff' }}>
-                    Todos
+                  <MenuItem value="todos" sx={{ color: '#111827 !important', bgcolor: '#ffffff' }}>
+                    Todos los estados
                   </MenuItem>
-                  <MenuItem value="en-curso" sx={{ color: '#000000 !important', bgcolor: '#ffffff' }}>
+                  <MenuItem value="activa" sx={{ color: '#111827 !important', bgcolor: '#ffffff' }}>
+                    Activas
+                  </MenuItem>
+                  <MenuItem value="borrador" sx={{ color: '#111827 !important', bgcolor: '#ffffff' }}>
+                    Borradores
+                  </MenuItem>
+                  <MenuItem value="cerrada" sx={{ color: '#111827 !important', bgcolor: '#ffffff' }}>
+                    Cerradas
+                  </MenuItem>
+                  <MenuItem value="en-curso" sx={{ color: '#111827 !important', bgcolor: '#ffffff' }}>
                     En progreso
                   </MenuItem>
-                  <MenuItem value="completada" sx={{ color: '#000000 !important', bgcolor: '#ffffff' }}>
+                  <MenuItem value="completada" sx={{ color: '#111827 !important', bgcolor: '#ffffff' }}>
                     Completada
                   </MenuItem>
-                  <MenuItem value="alerta" sx={{ color: '#000000 !important', bgcolor: '#ffffff' }}>
+                  <MenuItem value="alerta" sx={{ color: '#111827 !important', bgcolor: '#ffffff' }}>
                     Requiere atención
                   </MenuItem>
                 </Select>
@@ -548,7 +580,13 @@ export const VisualizacionMetas = () => {
               // Estado labels & icons
               let estadoLabel = 'En progreso';
               let estadoIcon = <WatchLaterIcon sx={{ fontSize: 12 }} />;
-              if (meta.estado === 'completada') {
+              if (meta.estado === 'borrador') {
+                estadoLabel = 'Borrador';
+                estadoIcon = <DraftsIcon sx={{ fontSize: 12 }} />;
+              } else if (meta.estado === 'cerrada') {
+                estadoLabel = 'Cerrada';
+                estadoIcon = <LockIcon sx={{ fontSize: 12 }} />;
+              } else if (meta.estado === 'completada') {
                 estadoLabel = 'Completada';
                 estadoIcon = <CheckCircleIcon sx={{ fontSize: 12 }} />;
               } else if (meta.estado === 'alerta') {
@@ -588,26 +626,52 @@ export const VisualizacionMetas = () => {
                         </Box>
                       </Box>
 
-                      {/* Action buttons (CRUD) */}
-                      {(meta.permissions?.canEdit || meta.permissions?.canDelete) && (
+                      {/* Action buttons (CRUD / Lifecycle) */}
+                      {(meta.permissions?.canEdit || meta.permissions?.canDelete || meta.isClosed) && (
                         <Box sx={styles.actionBtns}>
-                          {meta.permissions?.canEdit && (
-                            <Button
-                              sx={styles.iconActionBtn('edit')}
-                              aria-label="Editar meta"
-                              onClick={() => navigate(`/meta-form/${meta.id}`)}
-                            >
-                              <EditIcon sx={{ fontSize: 16 }} />
-                            </Button>
+                          {meta.permissions?.canEdit && !meta.isClosed && (
+                            <Tooltip title={meta.isDraft ? "Continuar edición del borrador" : "Editar meta"}>
+                              <Button
+                                sx={styles.iconActionBtn('edit')}
+                                aria-label={meta.isDraft ? "Continuar edición" : "Editar meta"}
+                                onClick={() => navigate(`/meta-form/${meta.id}`)}
+                              >
+                                <EditIcon sx={{ fontSize: 16 }} />
+                              </Button>
+                            </Tooltip>
                           )}
-                          {meta.permissions?.canDelete && (
-                            <Button
-                              sx={styles.iconActionBtn('delete')}
-                              aria-label="Eliminar meta"
-                              onClick={() => handleOpenDeleteDialog(meta.id)}
-                            >
-                              <DeleteIcon sx={{ fontSize: 16 }} />
-                            </Button>
+                          {meta.permissions?.canEdit && !meta.isDraft && !meta.isClosed && (
+                            <Tooltip title="Cerrar meta (finalizar ciclo)">
+                              <Button
+                                sx={styles.iconActionBtn('close')}
+                                aria-label="Cerrar meta"
+                                onClick={() => handleOpenCloseDialog(meta.id)}
+                              >
+                                <LockIcon sx={{ fontSize: 16 }} />
+                              </Button>
+                            </Tooltip>
+                          )}
+                          {meta.permissions?.canDelete && !meta.isClosed && (
+                            <Tooltip title="Eliminar meta">
+                              <Button
+                                sx={styles.iconActionBtn('delete')}
+                                aria-label="Eliminar meta"
+                                onClick={() => handleOpenDeleteDialog(meta.id)}
+                              >
+                                <DeleteIcon sx={{ fontSize: 16 }} />
+                              </Button>
+                            </Tooltip>
+                          )}
+                          {meta.isClosed && (
+                            <Tooltip title="Ver detalle de meta cerrada (solo lectura)">
+                              <Button
+                                sx={styles.iconActionBtn('view')}
+                                aria-label="Ver meta"
+                                onClick={() => navigate(`/meta-form/${meta.id}`)}
+                              >
+                                <VisibilityIcon sx={{ fontSize: 16 }} />
+                              </Button>
+                            </Tooltip>
                           )}
                         </Box>
                       )}
@@ -615,35 +679,58 @@ export const VisualizacionMetas = () => {
                   </Box>
 
                   {/* Progress Section */}
-                  <Box sx={styles.metaProgress}>
-                    <Box sx={styles.progressRow}>
-                      <Typography variant="body2" sx={styles.progressLabel}>
-                        {meta.comportamiento === 'debe-mantenerse-en-rango' ? (
-                          <>
-                            Progreso: <strong>{meta.actual}{meta.tipoValor === 'percentage' || meta.tipoValor === 'porcentaje' || meta.tipoValor === 'porcentual' ? '%' : ''}</strong> (Rango: {meta.lowerLimit} - {meta.upperLimit}{meta.tipoValor === 'percentage' || meta.tipoValor === 'porcentaje' || meta.tipoValor === 'porcentual' ? '%' : ''})
-                          </>
-                        ) : (
-                          <>
-                            Progreso: <strong>{meta.actual}{meta.tipoValor === 'percentage' || meta.tipoValor === 'porcentaje' || meta.tipoValor === 'porcentual' ? '%' : ''}</strong> / {meta.objetivo}{meta.tipoValor === 'percentage' || meta.tipoValor === 'porcentaje' || meta.tipoValor === 'porcentual' ? '%' : ''}
-                          </>
-                        )}
-                      </Typography>
-                      <Typography sx={styles.progressPct}>
-                        {meta.progreso.toFixed(2)}%
-                      </Typography>
-                    </Box>
-                    
-                    <Box sx={styles.progressBarContainer}>
-                      <Box sx={styles.progressBarFill(meta.estado, meta.progreso)} />
-                    </Box>
-
-                    {vence && (
-                      <Box sx={styles.venceLine}>
-                        <WatchLaterIcon sx={{ fontSize: 13 }} />
-                        <span>Vence en {dias} día{dias === 1 ? '' : 's'}</span>
+                  {meta.isDraft ? (
+                    <Box sx={{
+                      my: 2,
+                      p: 1.5,
+                      borderRadius: 2,
+                      bgcolor: '#fffbeb',
+                      border: '1px dashed #fcd34d',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 1.5,
+                    }}>
+                      <DraftsIcon sx={{ color: '#d97706', fontSize: 20, flexShrink: 0 }} />
+                      <Box>
+                        <Typography variant="body2" sx={{ fontWeight: 600, color: '#92400e', fontSize: '13px' }}>
+                          Meta en modo Borrador
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: '#b45309', display: 'block', fontSize: '12px' }}>
+                          Esta meta no calcula progreso ni es visible en dashboards institucionales hasta que sea publicada.
+                        </Typography>
                       </Box>
-                    )}
-                  </Box>
+                    </Box>
+                  ) : (
+                    <Box sx={styles.metaProgress}>
+                      <Box sx={styles.progressRow}>
+                        <Typography variant="body2" sx={styles.progressLabel}>
+                          {meta.comportamiento === 'debe-mantenerse-en-rango' ? (
+                            <>
+                              Progreso: <strong>{meta.actual}{meta.tipoValor === 'percentage' || meta.tipoValor === 'porcentaje' || meta.tipoValor === 'porcentual' ? '%' : ''}</strong> (Rango: {meta.lowerLimit} - {meta.upperLimit}{meta.tipoValor === 'percentage' || meta.tipoValor === 'porcentaje' || meta.tipoValor === 'porcentual' ? '%' : ''})
+                            </>
+                          ) : (
+                            <>
+                              Progreso: <strong>{meta.actual}{meta.tipoValor === 'percentage' || meta.tipoValor === 'porcentaje' || meta.tipoValor === 'porcentual' ? '%' : ''}</strong> / {meta.objetivo}{meta.tipoValor === 'percentage' || meta.tipoValor === 'porcentaje' || meta.tipoValor === 'porcentual' ? '%' : ''}
+                            </>
+                          )}
+                        </Typography>
+                        <Typography sx={styles.progressPct}>
+                          {meta.progreso.toFixed(2)}%
+                        </Typography>
+                      </Box>
+                      
+                      <Box sx={styles.progressBarContainer}>
+                        <Box sx={styles.progressBarFill(meta.estado, meta.progreso)} />
+                      </Box>
+
+                      {vence && (
+                        <Box sx={styles.venceLine}>
+                          <WatchLaterIcon sx={{ fontSize: 13 }} />
+                          <span>Vence en {dias} día{dias === 1 ? '' : 's'}</span>
+                        </Box>
+                      )}
+                    </Box>
+                  )}
 
                   {/* Footer Info Dates */}
                   <Box sx={styles.cardFoot}>
@@ -655,6 +742,12 @@ export const VisualizacionMetas = () => {
                       <CalendarIcon sx={{ fontSize: 14 }} />
                       <span>Fecha límite: {fmtFecha(meta.fechaLimite)}</span>
                     </Box>
+                    {meta.isClosed && meta.closedAt && (
+                      <Box sx={styles.dateItem}>
+                        <LockIcon sx={{ fontSize: 14, color: '#64748b' }} />
+                        <span>Cerrada el: {fmtFecha(meta.closedAt)}</span>
+                      </Box>
+                    )}
                   </Box>
                 </Box>
               );
@@ -714,90 +807,8 @@ export const VisualizacionMetas = () => {
         </Box>
       </Box>
 
-      {/* Floating Help Button */}
-      <IconButton
-        onClick={() => setOpenHelpDialog(true)}
-        sx={{
-          position: 'fixed',
-          bottom: 24,
-          right: 24,
-          bgcolor: '#1E2875',
-          color: '#ffffff',
-          boxShadow: '0 4px 10px rgba(30, 40, 117, 0.3)',
-          '&:hover': {
-            bgcolor: '#1560d3',
-          },
-        }}
-        aria-label="Abrir centro de ayuda"
-      >
-        <HelpIcon />
-      </IconButton>
-
-      {/* Help Dialog Modal */}
-      <Dialog
-        open={openHelpDialog}
-        onClose={() => setOpenHelpDialog(false)}
-        maxWidth="sm"
-        fullWidth
-        PaperProps={{
-          sx: { borderRadius: 4, p: 1, bgcolor: '#ffffff', color: '#111827', border: '1px solid #e5e7eb' },
-        }}
-      >
-        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', pb: 1 }}>
-          <Typography variant="h6" sx={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 700, color: '#1E2875' }}>
-            Centro de Ayuda - Metas
-          </Typography>
-          <IconButton onClick={() => setOpenHelpDialog(false)}>
-            <CloseIcon />
-          </IconButton>
-        </DialogTitle>
-        <DialogContent>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-            {faqData.map((faq, index) => (
-              <Accordion 
-                key={index}
-                elevation={0}
-                sx={{
-                  bgcolor: '#f9fafb',
-                  border: '1px solid #e5e7eb',
-                  borderRadius: '8px !important',
-                  mb: 1,
-                  '&::before': { display: 'none' },
-                }}
-              >
-                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                  <Typography variant="body2" sx={{ fontWeight: 600, color: '#1E2875' }}>
-                    {faq.q}
-                  </Typography>
-                </AccordionSummary>
-                <AccordionDetails sx={{ borderTop: '1px solid #e5e7eb', pt: 2 }}>
-                  <Typography variant="body2" sx={{ color: '#070c12' }}>
-                    {faq.a}
-                  </Typography>
-                </AccordionDetails>
-              </Accordion>
-            ))}
-
-            {/* Banner info badge tip */}
-            <Box 
-              sx={{
-                bgcolor: '#F0FDF4',
-                border: '1px solid #1DC2A0',
-                borderRadius: 2,
-                p: 2,
-                mt: 1,
-              }}
-            >
-              <Typography variant="caption" sx={{ color: '#15803d', fontWeight: 600, display: 'block', mb: 0.5 }}>
-                💡 Tip de Gestión:
-              </Typography>
-              <Typography variant="body2" sx={{ color: '#166534', fontSize: '13px' }}>
-                Las metas en estado "Requiere atención" (alerta) tienen un progreso significativamente inferior al esperado para su fecha límite. ¡Revísalas periódicamente!
-              </Typography>
-            </Box>
-          </Box>
-        </DialogContent>
-      </Dialog>
+      {/* Centro de Ayuda contextual unificado */}
+      <CentroDeAyuda modulo="metas" />
 
       {/* Delete Confirmation Dialog */}
       <Dialog 
@@ -860,6 +871,74 @@ export const VisualizacionMetas = () => {
               }}
             >
               Eliminar
+            </Button>
+          </Box>
+        </DialogContent>
+      </Dialog>
+
+      {/* Close Meta Confirmation Dialog */}
+      <Dialog 
+        open={closeDialogOpen} 
+        onClose={handleCloseCloseDialog}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 3, p: 2, bgcolor: '#ffffff', color: '#111827', textAlign: 'center' } }}
+      >
+        <DialogTitle sx={{ m: 0, p: 1, display: 'flex', justifyContent: 'flex-end', pb: 0 }}>
+          <IconButton onClick={handleCloseCloseDialog} size="small" sx={{ color: '#6b7280' }} disabled={isClosingMeta}>
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ pb: 3, pt: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+          <Box sx={{ width: 60, height: 60, borderRadius: '50%', bgcolor: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#475569', mb: 1 }}>
+            <LockIcon sx={{ fontSize: 36 }} />
+          </Box>
+          <Typography variant="h6" sx={{ fontWeight: 700, color: '#111827', fontFamily: "'Inter', sans-serif" }}>
+            ¿Cerrar esta meta?
+          </Typography>
+          <Typography variant="body2" sx={{ color: '#6b7280', fontFamily: "'Inter', sans-serif" }}>
+            Al cerrar la meta se congelará un snapshot histórico de su estado actual. La meta pasará a modo solo lectura y no podrá volver a editarse ni eliminarse.
+          </Typography>
+          
+          <Box sx={{ display: 'flex', gap: 2, mt: 2, width: '100%' }}>
+            <Button
+              onClick={handleCloseCloseDialog}
+              variant="outlined"
+              fullWidth
+              disabled={isClosingMeta}
+              sx={{
+                textTransform: 'none',
+                borderRadius: 2,
+                fontWeight: 600,
+                color: '#4b5563',
+                borderColor: '#d1d5db',
+                fontFamily: "'Inter', sans-serif",
+                '&:hover': {
+                  bgcolor: '#f3f4f6',
+                  borderColor: '#9ca3af',
+                }
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleConfirmClose}
+              variant="contained"
+              fullWidth
+              disabled={isClosingMeta}
+              sx={{
+                bgcolor: '#475569',
+                color: '#ffffff',
+                textTransform: 'none',
+                borderRadius: 2,
+                fontWeight: 600,
+                fontFamily: "'Inter', sans-serif",
+                '&:hover': {
+                  bgcolor: '#334155',
+                }
+              }}
+            >
+              {isClosingMeta ? 'Cerrando...' : 'Confirmar Cierre'}
             </Button>
           </Box>
         </DialogContent>

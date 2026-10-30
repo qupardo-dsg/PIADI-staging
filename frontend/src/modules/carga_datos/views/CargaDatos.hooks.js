@@ -32,7 +32,24 @@ export const isAdmisionTemplate = (template) => {
   return name.includes('admisión') || name.includes('admision') || roleName === 'admisión' || roleName === 'admision';
 };
 
-export const canViewTemplate = (template, userRole) => {
+export const isDesarrolloCurricularTemplate = (template) => {
+  const name = normalizeName(template?.name);
+  const roleName = normalizeName(template?.role?.name);
+  return name === 'desarrollo curricular' || roleName === 'desarrollo curricular';
+};
+
+export const canViewTemplate = (template, userOrRole) => {
+  const userRole = typeof userOrRole === 'string' ? userOrRole : userOrRole?.role;
+  const roleGroup = typeof userOrRole === 'object' ? userOrRole?.roleGroup : null;
+
+  if (isAdmisionTemplate(template)) {
+    return userRole === 'Admisión' || userRole === 'Rector' || roleGroup === 'Rectoria';
+  }
+
+  if (isDesarrolloCurricularTemplate(template)) {
+    return userRole === 'Desarrollo Curricular' || userRole === 'Rector' || roleGroup === 'Rectoria';
+  }
+
   if (isVcmTemplate(template)) {
     return [VCM_ROLE, 'Rector'].includes(userRole);
   }
@@ -68,7 +85,6 @@ export const useCargaDatos = () => {
   const [selectedFile, setSelectedFile] = useState(null);
   const [isDragActive, setIsDragActive] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const [openHelpDialog, setOpenHelpDialog] = useState(false);
   const [templates, setTemplates] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
@@ -216,7 +232,7 @@ export const useCargaDatos = () => {
     }
   }
 
-  const filteredTemplates = uniqueDepartmentTemplates.filter((template) => canViewTemplate(template, user?.role));
+  const filteredTemplates = uniqueDepartmentTemplates.filter((template) => canViewTemplate(template, user));
 
   // Función para alternar la inclusión de una hoja en Admisión
   const toggleAdmisionSheet = (sheetKey) => {
@@ -248,34 +264,6 @@ export const useCargaDatos = () => {
     return selectedTemplate;
   };
 
-  // Datos de las Preguntas Frecuentes (FAQ) del Centro de Ayuda
-  const faqData = [
-    {
-      q: '¿Qué son las metas y cómo se usan?',
-      a: 'Las metas son objetivos específicos que puedes rastrear a lo largo del tiempo. Cada meta tiene un progreso medido en porcentaje, fechas de inicio y término, y un estado (Completada, En curso, o Superada). Las barras de progreso muestran visualmente qué tan cerca estás de cumplir cada meta.'
-    },
-    {
-      q: '¿Cómo interpreto los indicadores?',
-      a: 'Los indicadores muestran métricas clave como "Total de cursos dictados" o "Tasa de ejecución". El número principal es el valor actual, y la flecha con porcentaje indica el cambio comparado con el periodo anterior. Una flecha verde hacia arriba significa mejora.'
-    },
-    {
-      q: '¿Cómo navego entre secciones?',
-      a: 'Usa el menú lateral izquierdo para moverte entre Inicio, Dashboards, Metas, y otras secciones. La sección activa se muestra con fondo verde azulado y una barra blanca en el borde izquierdo.'
-    },
-    {
-      q: '¿Qué significan los colores en las metas?',
-      a: 'Verde indica meta completada (100% o más), amarillo indica meta en progreso (menos de 100%), y rojo indica que se ha superado el límite de una meta negativa (como "tasa de abandono debajo del 30%").'
-    },
-    {
-      q: '¿Cómo puedo ver más detalles?',
-      a: 'Haz clic en el botón "Detalles" junto a cada meta, o en "Ingresar a Dashboard" para ver análisis más profundos con gráficos interactivos.'
-    },
-    {
-      q: '¿Cómo funcionan las métricas?',
-      isRich: true
-    }
-  ];
-
   const activeMenu = 'Carga de datos';
 
   const handleDrawerToggle = () => {
@@ -293,6 +281,19 @@ export const useCargaDatos = () => {
   const handleFileChange = (e) => {
     if (e.target.files && e.target.files[0]) {
       setSelectedFile(e.target.files[0]);
+    }
+  };
+
+  const handleRemoveFile = (e) => {
+    if (e && e.stopPropagation) {
+      e.stopPropagation();
+    }
+    setSelectedFile(null);
+    setUploadError('');
+    setUploadErrorDetails([]);
+    const inputElement = document.getElementById('dialog-file-input');
+    if (inputElement) {
+      inputElement.value = '';
     }
   };
 
@@ -497,8 +498,6 @@ export const useCargaDatos = () => {
     isDragActive,
     currentPage,
     setCurrentPage,
-    openHelpDialog,
-    setOpenHelpDialog,
     templates,
     uploading,
     uploadError,
@@ -506,13 +505,13 @@ export const useCargaDatos = () => {
     uploadSuccess,
     successSummary,
     filteredTemplates,
-    faqData,
     activeMenu,
     admisionSheets,
     toggleAdmisionSheet,
     handleDrawerToggle,
     handleTemplateSelect,
     handleFileChange,
+    handleRemoveFile,
     handleDragOver,
     handleDragLeave,
     handleDownloadTemplate,

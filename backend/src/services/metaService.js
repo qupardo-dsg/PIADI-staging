@@ -1,11 +1,14 @@
 const { Op } = require('sequelize');
 const { sequelize, Meta, MetaMetric, IndicatorDefinition, Department } = require('../models');
-const { ValidationError, NotFoundError } = require('../utils/errors');
+const { ValidationError, NotFoundError, ConflictError } = require('../utils/errors');
 const cacheService = require('./cacheService');
 
 const WEIGHT_SCALE = 10000;
 const EXPECTED_WEIGHT_UNITS = 100 * WEIGHT_SCALE;
 const META_FIELDS = ['departmentId', 'anio', 'periodo', 'nombre', 'fechaInicio', 'fechaLimite', 'prioridad', 'comportamiento'];
+const LIFECYCLE_STATUSES = ['BORRADOR', 'ACTIVA', 'CERRADA'];
+const DRAFT_TEXT_FIELDS = new Set(['indicatorKey', 'behavior', 'valueType']);
+const DRAFT_NUMBER_FIELDS = new Set(['weight', 'targetValue', 'lowerLimit', 'upperLimit']);
 
 const requireNonEmptyString = (value, field) => {
   if (typeof value !== 'string' || value.trim() === '') {
@@ -29,6 +32,76 @@ const requirePresentValue = (value, field) => {
     throw new ValidationError(`El campo ${field} es obligatorio y no puede estar vacío`);
   }
   return value;
+};
+
+const resolveLifecycleStatus = (currentStatus, requestedStatus) => {
+  const current = currentStatus || 'ACTIVA';
+  if (!LIFECYCLE_STATUSES.includes(current)) {
+    throw new ValidationError('El estado actual de la meta no admite transiciones');
+  }
+  const next = requestedStatus === undefined ? current : requestedStatus;
+  if (!LIFECYCLE_STATUSES.includes(next)) {
+    throw new ValidationError('lifecycleStatus debe ser BORRADOR, ACTIVA o CERRADA');
+  }
+  if (next === 'CERRADA' || current === 'CERRADA') {
+    throw new ConflictError('El cierre de metas solo puede realizarse mediante la operación de cierre');
+  }
+  if (current === 'ACTIVA' && next === 'BORRADOR') {
+    throw new ValidationError('Una meta ACTIVA no puede volver a BORRADOR');
+  }
+  return next;
+};
+
+const rejectClosureFields = (payload) => {
+  if (Object.prototype.hasOwnProperty.call(payload, 'closedAt')
+    || Object.prototype.hasOwnProperty.call(payload, 'finalSnapshot')) {
+    throw new ValidationError('El resultado final solo puede generarse mediante el cierre de la meta');
+  }
+};
+
+const normalizeDraftMetrics = (draftMetrics) => {
+  if (draftMetrics === undefined || draftMetrics === null) return [];
+  if (!Array.isArray(draftMetrics)) {
+    throw new ValidationError('draftMetrics debe ser un arreglo de métricas parciales');
+  }
+  return draftMetrics.map((metric, index) => {
+    if (!metric || typeof metric !== 'object' || Array.isArray(metric)) {
+      throw new ValidationError(`draftMetrics[${index}] debe ser un objeto`);
+    }
+    const normalized = {};
+    for (const [field, value] of Object.entries(metric)) {
+      if (DRAFT_TEXT_FIELDS.has(field)) {
+        if (value !== null && typeof value !== 'string') {
+          throw new ValidationError(`draftMetrics[${index}].${field} debe ser texto o null`);
+        }
+        normalized[field] = value;
+      } else if (DRAFT_NUMBER_FIELDS.has(field)) {
+        if (value !== null && value !== '' && (typeof value !== 'number' || !Number.isFinite(value))) {
+          throw new ValidationError(`draftMetrics[${index}].${field} debe ser numérico, vacío o null`);
+        }
+        normalized[field] = value;
+      } else {
+        throw new ValidationError(`draftMetrics[${index}].${field} no está permitido`);
+      }
+    }
+    return normalized;
+  });
+};
+
+const rejectDraftFieldsOnActive = (payload) => {
+  if (payload.draftMetrics !== undefined && payload.draftMetrics !== null) {
+    throw new ValidationError('draftMetrics solo puede guardarse en una meta BORRADOR');
+  }
+};
+
+const rejectCompleteMetricsOnDraft = (payload) => {
+  if (payload.indicatorKey != null || payload.valorMeta != null) {
+    throw new ValidationError('Use draftMetrics para guardar objetivos parciales de un BORRADOR');
+  }
+  if (payload.metrics !== undefined && payload.metrics !== null
+    && (!Array.isArray(payload.metrics) || payload.metrics.length > 0)) {
+    throw new ValidationError('Use draftMetrics para guardar métricas de un BORRADOR');
+  }
 };
 
 const normalizeMetrics = (metrics) => {
@@ -108,7 +181,32 @@ const validateIndicators = async (metrics, transaction) => {
   }
 };
 
-const normalizeMetaFields = async (payload, transaction, { partial = false } = {}) => {
+const validateStartYear = (anio, fechaInicio) => {
+  if (fechaInicio === null || fechaInicio === undefined) {
+    throw new ValidationError('fechaInicio debe ser una fecha válida');
+  }
+  const date = new Date(fechaInicio);
+  if (Number.isNaN(date.getTime())) {
+    throw new ValidationError('fechaInicio debe ser una fecha válida');
+  }
+  if (typeof fechaInicio === 'string') {
+    const isoDate = /^(\d{4})-(\d{2})-(\d{2})(?:T|$)/.exec(fechaInicio);
+    if (isoDate) {
+      const year = Number(isoDate[1]);
+      const month = Number(isoDate[2]);
+      const day = Number(isoDate[3]);
+      const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+      if (month < 1 || month > 12 || day < 1 || day > lastDay) {
+        throw new ValidationError('fechaInicio debe ser una fecha válida');
+      }
+    }
+  }
+  if (anio !== date.getUTCFullYear()) {
+    throw new ValidationError('anio debe coincidir con el año UTC de fechaInicio');
+  }
+};
+
+const normalizeMetaFields = async (payload, transaction, { partial = false, currentMeta = null } = {}) => {
   const data = {};
   if (!partial || payload.anio !== undefined) {
     const anio = requireFiniteNumber(payload.anio, 'anio');
@@ -149,6 +247,10 @@ const normalizeMetaFields = async (payload, transaction, { partial = false } = {
   if (!partial || payload.comportamiento !== undefined) {
     data.comportamiento = payload.comportamiento === null || payload.comportamiento === undefined ? null : String(payload.comportamiento).trim();
   }
+
+  if (!partial || data.anio !== undefined || data.fechaInicio !== undefined) {
+    validateStartYear(data.anio ?? currentMeta?.anio, data.fechaInicio ?? currentMeta?.fechaInicio);
+  }
   
   return data;
 };
@@ -172,7 +274,24 @@ const getById = async (id, options = {}) => {
 };
 
 const create = async (payload, creatorId) => {
+  rejectClosureFields(payload);
   const result = await sequelize.transaction(async (transaction) => {
+    const lifecycleStatus = resolveLifecycleStatus('BORRADOR',
+      payload.lifecycleStatus === undefined ? 'ACTIVA' : payload.lifecycleStatus);
+    if (lifecycleStatus === 'BORRADOR') {
+      rejectCompleteMetricsOnDraft(payload);
+      const metaFields = await normalizeMetaFields(payload, transaction);
+      const meta = await Meta.create({
+        ...metaFields,
+        creatorId,
+        lifecycleStatus,
+        indicatorKey: null,
+        valorMeta: null,
+        draftMetrics: normalizeDraftMetrics(payload.draftMetrics)
+      }, { transaction });
+      return getById(meta.id, { transaction });
+    }
+    rejectDraftFieldsOnActive(payload);
     const metrics = normalizeMetrics(payload.metrics);
     await validateIndicators(metrics, transaction);
     const metaFields = await normalizeMetaFields(payload, transaction);
@@ -180,8 +299,10 @@ const create = async (payload, creatorId) => {
     const meta = await Meta.create({
       ...metaFields,
       creatorId,
+      lifecycleStatus,
       indicatorKey: firstMetric.indicatorKey,
-      valorMeta: firstMetric.targetValue
+      valorMeta: firstMetric.targetValue,
+      draftMetrics: null
     }, { transaction });
     await MetaMetric.bulkCreate(metrics.map((metric) => ({ ...metric, metaId: meta.id })), { transaction, validate: true });
     return getById(meta.id, { transaction });
@@ -196,17 +317,42 @@ const update = async (id, payload) => {
     if (!meta) {
       throw new NotFoundError('La meta solicitada no existe');
     }
+    if (meta.lifecycleStatus === 'CERRADA') {
+      throw new ConflictError('Una meta CERRADA no puede modificarse');
+    }
+    rejectClosureFields(payload);
+    const lifecycleStatus = resolveLifecycleStatus(meta.lifecycleStatus, payload.lifecycleStatus);
+    const metaFields = await normalizeMetaFields(payload, transaction, { partial: true, currentMeta: meta });
+    if (lifecycleStatus === 'BORRADOR') {
+      rejectCompleteMetricsOnDraft(payload);
+      await meta.update({
+        ...metaFields,
+        lifecycleStatus,
+        indicatorKey: null,
+        valorMeta: null,
+        ...(payload.draftMetrics === undefined ? {} : { draftMetrics: normalizeDraftMetrics(payload.draftMetrics) })
+      }, { transaction });
+      return getById(meta.id, { transaction });
+    }
+    rejectDraftFieldsOnActive(payload);
     const metrics = normalizeMetrics(payload.metrics);
     await validateIndicators(metrics, transaction);
-    const metaFields = await normalizeMetaFields(payload, transaction, { partial: true });
+    if (meta.lifecycleStatus === 'BORRADOR') {
+      const finalFields = Object.fromEntries(META_FIELDS.map((field) => [
+        field, metaFields[field] !== undefined ? metaFields[field] : meta[field]
+      ]));
+      await normalizeMetaFields(finalFields, transaction);
+    }
     const firstMetric = metrics[0];
     await meta.update({
       ...META_FIELDS.reduce((result, field) => {
         if (metaFields[field] !== undefined) result[field] = metaFields[field];
         return result;
       }, {}),
+      lifecycleStatus,
       indicatorKey: firstMetric.indicatorKey,
-      valorMeta: firstMetric.targetValue
+      valorMeta: firstMetric.targetValue,
+      draftMetrics: null
     }, { transaction });
     await MetaMetric.destroy({ where: { metaId: meta.id }, transaction });
     await MetaMetric.bulkCreate(metrics.map((metric) => ({ ...metric, metaId: meta.id })), { transaction, validate: true });
@@ -221,6 +367,9 @@ const remove = async (id) => {
     const meta = await Meta.findByPk(normalizeMetaId(id), { transaction, lock: transaction.LOCK.UPDATE });
     if (!meta) {
       throw new NotFoundError('La meta solicitada no existe');
+    }
+    if (meta.lifecycleStatus === 'CERRADA') {
+      throw new ConflictError('Una meta CERRADA no puede eliminarse');
     }
     await meta.destroy({ transaction });
   });

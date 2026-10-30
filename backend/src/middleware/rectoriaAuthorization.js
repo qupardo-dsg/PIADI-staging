@@ -9,15 +9,13 @@ const isMetaReadOnlyUser = (user) => Boolean(user)
 const resolveUserDepartmentId = (user) => {
   if (!user) return null;
   if (user.departmentId) return user.departmentId;
-  const roleLower = (user.role || '').toLowerCase();
-  if (roleLower.includes('innovación') || roleLower.includes('innovacion')) {
-    return 'innovacion';
+  if (user.department) {
+    if (typeof user.department === 'string') return user.department;
+    if (user.department.key) return user.department.key;
+    if (user.department.id) return user.department.id;
   }
-  if (roleLower.includes('vinculación') || roleLower.includes('vinculacion') || roleLower.includes('vcm')) {
-    return 'vinculacion_medio';
-  }
-  if (roleLower.includes('continua') || roleLower.includes('académico') || roleLower.includes('academico')) {
-    return 'educacion_continua';
+  if (user.role && typeof user.role === 'object' && user.role.departmentId) {
+    return user.role.departmentId;
   }
   return null;
 };
@@ -30,6 +28,10 @@ const canManageMeta = (user, meta) => {
     && userDepartmentId === meta.departmentId
     && Number(user.id) === Number(meta.creatorId);
 };
+
+const canReadMeta = (user, meta) => Boolean(meta) && (meta.lifecycleStatus !== 'BORRADOR'
+  || Boolean(user && (isRectoria(user) || (user.id != null && meta.creatorId != null
+    && Number(user.id) === Number(meta.creatorId)))));
 
 const requireRectoria = (req, res, next) => {
   if (!req.user) {
@@ -77,7 +79,9 @@ const requireMetaDepartmentAccess = (req, res, next) => {
 module.exports = {
   isRectoria,
   isMetaReadOnlyUser,
+  resolveUserDepartmentId,
   canManageMeta,
+  canReadMeta,
   requireRectoria,
   requireRectoriaForInstitutionalCreation,
   requireMetaDepartmentAccess

@@ -15,7 +15,7 @@ async function initDbConstraints() {
       DO $$
       BEGIN
         IF NOT EXISTS (
-          SELECT 1 FROM pg_constraint WHERE conname = 'fk_users_department'
+          SELECT 1 FROM pg_constraint WHERE conname IN ('fk_users_department', 'users_departmentId_fkey')
         ) THEN
           ALTER TABLE users
             ADD CONSTRAINT fk_users_department FOREIGN KEY ("departmentId")
@@ -46,7 +46,7 @@ async function initDbConstraints() {
       DO $$
       BEGIN
         IF NOT EXISTS (
-          SELECT 1 FROM pg_constraint WHERE conname = 'fk_metas_creator'
+          SELECT 1 FROM pg_constraint WHERE conname IN ('fk_metas_creator', 'metas_creatorId_fkey')
         ) THEN
           ALTER TABLE metas
             ADD CONSTRAINT fk_metas_creator FOREIGN KEY ("creatorId")
@@ -143,6 +143,52 @@ async function initDbConstraints() {
     } else {
       console.log('Creating materialized view v_meta_indicator_values...');
     await sequelize.query(`
+      CREATE TABLE IF NOT EXISTS rendimiento_asignatura (
+        id SERIAL PRIMARY KEY,
+        rut INTEGER NOT NULL,
+        "codCli" VARCHAR(50),
+        "ramoEquiv" VARCHAR(50) NOT NULL,
+        seccion INTEGER,
+        anio INTEGER NOT NULL,
+        periodo INTEGER NOT NULL,
+        "notaFinal" DECIMAL(3, 1),
+        "estadoAsignatura" VARCHAR(20) NOT NULL DEFAULT 'APROBADO',
+        asistencia DECIMAL(5, 2),
+        "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS practicas (
+        id SERIAL PRIMARY KEY,
+        rut INTEGER NOT NULL,
+        "codCli" VARCHAR(50),
+        anio INTEGER NOT NULL,
+        periodo INTEGER NOT NULL,
+        "tipoPractica" VARCHAR(100) NOT NULL,
+        estado VARCHAR(50) NOT NULL,
+        "fechaInicio" DATE,
+        "fechaTermino" DATE,
+        horas INTEGER,
+        empresa VARCHAR(150),
+        "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS titulacion (
+        id SERIAL PRIMARY KEY,
+        rut INTEGER NOT NULL,
+        "codCli" VARCHAR(50),
+        "anioTitulacion" INTEGER NOT NULL,
+        periodo INTEGER NOT NULL,
+        cohorte INTEGER NOT NULL,
+        "tiempoNormativo" DECIMAL(4, 1),
+        "semestresCursados" DECIMAL(4, 1),
+        "fechaTitulacion" DATE,
+        distincion VARCHAR(50),
+        "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+
       DROP MATERIALIZED VIEW IF EXISTS v_meta_indicator_values CASCADE;
     `);
     await sequelize.query(`
@@ -498,7 +544,7 @@ async function initDbConstraints() {
         UNION
         SELECT DISTINCT "anioTermino" AS anio FROM proyectos WHERE "anioTermino" IS NOT NULL
         UNION
-        SELECT DISTINCT anio FROM metas WHERE anio IS NOT NULL
+        SELECT DISTINCT anio FROM metas WHERE anio IS NOT NULL AND "lifecycleStatus" = 'ACTIVA'
         UNION
         SELECT generate_series(2020, 2030) AS anio
       ) y
@@ -519,7 +565,7 @@ async function initDbConstraints() {
         UNION
         SELECT DISTINCT "anioTermino" AS anio FROM proyectos WHERE "anioTermino" IS NOT NULL
         UNION
-        SELECT DISTINCT anio FROM metas WHERE anio IS NOT NULL
+        SELECT DISTINCT anio FROM metas WHERE anio IS NOT NULL AND "lifecycleStatus" = 'ACTIVA'
         UNION
         SELECT generate_series(2020, 2030) AS anio
       ) y
@@ -674,7 +720,206 @@ async function initDbConstraints() {
         COALESCE(SUM("nDocentes"), 0)::numeric AS value
       FROM proyectos
       WHERE LOWER("tipoProyecto") IN ('estudiantil', 'institucional')
-      GROUP BY "anioInicio", CASE WHEN LOWER("semestreInicio") IN ('1', 'primer semestre', '1er semestre', 'semestre 1') THEN 'Semestre 1' ELSE 'Semestre 2' END;
+      GROUP BY "anioInicio", CASE WHEN LOWER("semestreInicio") IN ('1', 'primer semestre', '1er semestre', 'semestre 1') THEN 'Semestre 1' ELSE 'Semestre 2' END
+
+      UNION ALL
+
+      -- 25. Desarrollo Curricular - tasa_aprobacion_asignatura
+      SELECT
+        'tasa_aprobacion_asignatura'::varchar AS "indicatorKey",
+        'desarrollo_curricular'::varchar AS "departmentId",
+        anio,
+        'Anual'::varchar AS periodo,
+        CASE WHEN COUNT(*) > 0 THEN ROUND((COUNT(*) FILTER (WHERE UPPER("estadoAsignatura") = 'APROBADO')::numeric / COUNT(*)::numeric) * 100.0, 2) ELSE 0::numeric END AS value
+      FROM rendimiento_asignatura
+      GROUP BY anio
+
+      UNION ALL
+
+      SELECT
+        'tasa_aprobacion_asignatura'::varchar AS "indicatorKey",
+        'desarrollo_curricular'::varchar AS "departmentId",
+        anio,
+        CASE WHEN periodo = 1 THEN 'Semestre 1' ELSE 'Semestre 2' END::varchar AS periodo,
+        CASE WHEN COUNT(*) > 0 THEN ROUND((COUNT(*) FILTER (WHERE UPPER("estadoAsignatura") = 'APROBADO')::numeric / COUNT(*)::numeric) * 100.0, 2) ELSE 0::numeric END AS value
+      FROM rendimiento_asignatura
+      GROUP BY anio, CASE WHEN periodo = 1 THEN 'Semestre 1' ELSE 'Semestre 2' END
+
+      UNION ALL
+
+      -- 26. Desarrollo Curricular - tasa_reprobacion_asignatura
+      SELECT
+        'tasa_reprobacion_asignatura'::varchar AS "indicatorKey",
+        'desarrollo_curricular'::varchar AS "departmentId",
+        anio,
+        'Anual'::varchar AS periodo,
+        CASE WHEN COUNT(*) > 0 THEN ROUND((COUNT(*) FILTER (WHERE UPPER("estadoAsignatura") = 'REPROBADO')::numeric / COUNT(*)::numeric) * 100.0, 2) ELSE 0::numeric END AS value
+      FROM rendimiento_asignatura
+      GROUP BY anio
+
+      UNION ALL
+
+      SELECT
+        'tasa_reprobacion_asignatura'::varchar AS "indicatorKey",
+        'desarrollo_curricular'::varchar AS "departmentId",
+        anio,
+        CASE WHEN periodo = 1 THEN 'Semestre 1' ELSE 'Semestre 2' END::varchar AS periodo,
+        CASE WHEN COUNT(*) > 0 THEN ROUND((COUNT(*) FILTER (WHERE UPPER("estadoAsignatura") = 'REPROBADO')::numeric / COUNT(*)::numeric) * 100.0, 2) ELSE 0::numeric END AS value
+      FROM rendimiento_asignatura
+      GROUP BY anio, CASE WHEN periodo = 1 THEN 'Semestre 1' ELSE 'Semestre 2' END
+
+      UNION ALL
+
+      -- 27. Desarrollo Curricular - asignaturas_criticas (> 30% reprobación)
+      SELECT
+        'asignaturas_criticas'::varchar AS "indicatorKey",
+        'desarrollo_curricular'::varchar AS "departmentId",
+        anio,
+        'Anual'::varchar AS periodo,
+        COUNT(*) FILTER (WHERE tasa_rep > 30.0)::numeric AS value
+      FROM (
+        SELECT
+          anio,
+          "ramoEquiv",
+          CASE WHEN COUNT(*) > 0 THEN (COUNT(*) FILTER (WHERE UPPER("estadoAsignatura") = 'REPROBADO')::numeric / COUNT(*)::numeric) * 100.0 ELSE 0::numeric END AS tasa_rep
+        FROM rendimiento_asignatura
+        GROUP BY anio, "ramoEquiv"
+      ) sub_crit_anual
+      GROUP BY anio
+
+      UNION ALL
+
+      SELECT
+        'asignaturas_criticas'::varchar AS "indicatorKey",
+        'desarrollo_curricular'::varchar AS "departmentId",
+        anio,
+        CASE WHEN periodo = 1 THEN 'Semestre 1' ELSE 'Semestre 2' END::varchar AS periodo,
+        COUNT(*) FILTER (WHERE tasa_rep > 30.0)::numeric AS value
+      FROM (
+        SELECT
+          anio,
+          periodo,
+          "ramoEquiv",
+          CASE WHEN COUNT(*) > 0 THEN (COUNT(*) FILTER (WHERE UPPER("estadoAsignatura") = 'REPROBADO')::numeric / COUNT(*)::numeric) * 100.0 ELSE 0::numeric END AS tasa_rep
+        FROM rendimiento_asignatura
+        GROUP BY anio, periodo, "ramoEquiv"
+      ) sub_crit_sem
+      GROUP BY anio, CASE WHEN periodo = 1 THEN 'Semestre 1' ELSE 'Semestre 2' END
+
+      UNION ALL
+
+      -- 28. Desarrollo Curricular - practicas_inscritas
+      SELECT
+        'practicas_inscritas'::varchar AS "indicatorKey",
+        'desarrollo_curricular'::varchar AS "departmentId",
+        anio,
+        'Anual'::varchar AS periodo,
+        COUNT(*)::numeric AS value
+      FROM practicas
+      GROUP BY anio
+
+      UNION ALL
+
+      SELECT
+        'practicas_inscritas'::varchar AS "indicatorKey",
+        'desarrollo_curricular'::varchar AS "departmentId",
+        anio,
+        CASE WHEN periodo = 1 THEN 'Semestre 1' ELSE 'Semestre 2' END::varchar AS periodo,
+        COUNT(*)::numeric AS value
+      FROM practicas
+      GROUP BY anio, CASE WHEN periodo = 1 THEN 'Semestre 1' ELSE 'Semestre 2' END
+
+      UNION ALL
+
+      -- 29. Desarrollo Curricular - practicas_aprobadas
+      SELECT
+        'practicas_aprobadas'::varchar AS "indicatorKey",
+        'desarrollo_curricular'::varchar AS "departmentId",
+        anio,
+        'Anual'::varchar AS periodo,
+        COUNT(*) FILTER (WHERE UPPER(estado) = 'APROBADA')::numeric AS value
+      FROM practicas
+      GROUP BY anio
+
+      UNION ALL
+
+      SELECT
+        'practicas_aprobadas'::varchar AS "indicatorKey",
+        'desarrollo_curricular'::varchar AS "departmentId",
+        anio,
+        CASE WHEN periodo = 1 THEN 'Semestre 1' ELSE 'Semestre 2' END::varchar AS periodo,
+        COUNT(*) FILTER (WHERE UPPER(estado) = 'APROBADA')::numeric AS value
+      FROM practicas
+      GROUP BY anio, CASE WHEN periodo = 1 THEN 'Semestre 1' ELSE 'Semestre 2' END
+
+      UNION ALL
+
+      -- 30. Desarrollo Curricular - tasa_titulacion_cohorte
+      SELECT
+        'tasa_titulacion_cohorte'::varchar AS "indicatorKey",
+        'desarrollo_curricular'::varchar AS "departmentId",
+        "anioTitulacion" AS anio,
+        'Anual'::varchar AS periodo,
+        CASE WHEN COUNT(*) > 0 THEN ROUND((COUNT(DISTINCT rut) FILTER (WHERE "semestresCursados" IS NULL OR "tiempoNormativo" IS NULL OR "semestresCursados" <= "tiempoNormativo")::numeric / COUNT(DISTINCT rut)::numeric) * 100.0, 2) ELSE 0::numeric END AS value
+      FROM titulacion
+      GROUP BY "anioTitulacion"
+
+      UNION ALL
+
+      SELECT
+        'tasa_titulacion_cohorte'::varchar AS "indicatorKey",
+        'desarrollo_curricular'::varchar AS "departmentId",
+        "anioTitulacion" AS anio,
+        CASE WHEN COALESCE(periodo, 1) = 1 THEN 'Semestre 1' ELSE 'Semestre 2' END::varchar AS periodo,
+        CASE WHEN COUNT(*) > 0 THEN ROUND((COUNT(DISTINCT rut) FILTER (WHERE "semestresCursados" IS NULL OR "tiempoNormativo" IS NULL OR "semestresCursados" <= "tiempoNormativo")::numeric / COUNT(DISTINCT rut)::numeric) * 100.0, 2) ELSE 0::numeric END AS value
+      FROM titulacion
+      GROUP BY "anioTitulacion", CASE WHEN COALESCE(periodo, 1) = 1 THEN 'Semestre 1' ELSE 'Semestre 2' END
+
+      UNION ALL
+
+      -- 31. Desarrollo Curricular - titulados_por_anio
+      SELECT
+        'titulados_por_anio'::varchar AS "indicatorKey",
+        'desarrollo_curricular'::varchar AS "departmentId",
+        "anioTitulacion" AS anio,
+        'Anual'::varchar AS periodo,
+        COUNT(DISTINCT rut)::numeric AS value
+      FROM titulacion
+      GROUP BY "anioTitulacion"
+
+      UNION ALL
+
+      SELECT
+        'titulados_por_anio'::varchar AS "indicatorKey",
+        'desarrollo_curricular'::varchar AS "departmentId",
+        "anioTitulacion" AS anio,
+        CASE WHEN COALESCE(periodo, 1) = 1 THEN 'Semestre 1' ELSE 'Semestre 2' END::varchar AS periodo,
+        COUNT(DISTINCT rut)::numeric AS value
+      FROM titulacion
+      GROUP BY "anioTitulacion", CASE WHEN COALESCE(periodo, 1) = 1 THEN 'Semestre 1' ELSE 'Semestre 2' END
+
+      UNION ALL
+
+      -- 32. Desarrollo Curricular - tiempo_promedio_titulacion
+      SELECT
+        'tiempo_promedio_titulacion'::varchar AS "indicatorKey",
+        'desarrollo_curricular'::varchar AS "departmentId",
+        "anioTitulacion" AS anio,
+        'Anual'::varchar AS periodo,
+        COALESCE(ROUND(AVG("semestresCursados"), 2), 0)::numeric AS value
+      FROM titulacion
+      GROUP BY "anioTitulacion"
+
+      UNION ALL
+
+      SELECT
+        'tiempo_promedio_titulacion'::varchar AS "indicatorKey",
+        'desarrollo_curricular'::varchar AS "departmentId",
+        "anioTitulacion" AS anio,
+        CASE WHEN COALESCE(periodo, 1) = 1 THEN 'Semestre 1' ELSE 'Semestre 2' END::varchar AS periodo,
+        COALESCE(ROUND(AVG("semestresCursados"), 2), 0)::numeric AS value
+      FROM titulacion
+      GROUP BY "anioTitulacion", CASE WHEN COALESCE(periodo, 1) = 1 THEN 'Semestre 1' ELSE 'Semestre 2' END;
     `);
 
     await sequelize.query(`
@@ -736,6 +981,7 @@ async function initDbConstraints() {
           i.name::varchar AS "indicatorName"
         FROM metas m
         LEFT JOIN indicator_definitions i ON m."indicatorKey" = i.key
+        WHERE m."lifecycleStatus" = 'ACTIVA'
       ),
       base_calculo AS (
         SELECT
@@ -828,6 +1074,8 @@ async function initDbConstraints() {
       FROM ranked_metas
       WHERE rn <= 10;
     `);
+    }
+
 
     // ══════════════════════════════════════════════════════════════
     // PIADI-273: Restricciones de Integridad y Triggers para Innovación
@@ -839,7 +1087,7 @@ async function initDbConstraints() {
       DO $$
       BEGIN
         IF NOT EXISTS (
-          SELECT 1 FROM pg_constraint WHERE conname = 'fk_financiamientos_proyecto'
+          SELECT 1 FROM pg_constraint WHERE conname IN ('fk_financiamientos_proyecto', 'financiamientos_idProyecto_fkey')
         ) THEN
           ALTER TABLE financiamientos
             ADD CONSTRAINT fk_financiamientos_proyecto
@@ -960,7 +1208,7 @@ async function initDbConstraints() {
       DO $$
       BEGIN
         IF NOT EXISTS (
-          SELECT 1 FROM pg_constraint WHERE conname = 'fk_matricula_alumnos'
+          SELECT 1 FROM pg_constraint WHERE conname IN ('fk_matricula_alumnos', 'matriculas_por_asignatura_codCli_fkey')
         ) THEN
           ALTER TABLE matriculas_por_asignatura
             ADD CONSTRAINT fk_matricula_alumnos
@@ -971,7 +1219,7 @@ async function initDbConstraints() {
         END IF;
 
         IF NOT EXISTS (
-          SELECT 1 FROM pg_constraint WHERE conname = 'fk_matricula_asignaturas'
+          SELECT 1 FROM pg_constraint WHERE conname IN ('fk_matricula_asignaturas', 'matriculas_por_asignatura_ramoEquiv_fkey')
         ) THEN
           ALTER TABLE matriculas_por_asignatura
             ADD CONSTRAINT fk_matricula_asignaturas
@@ -982,7 +1230,7 @@ async function initDbConstraints() {
         END IF;
 
         IF NOT EXISTS (
-          SELECT 1 FROM pg_constraint WHERE conname = 'fk_caracterizacion_alumnos'
+          SELECT 1 FROM pg_constraint WHERE conname IN ('fk_caracterizacion_alumnos', 'caracterizacion_estudiante_rut_fkey')
         ) THEN
           ALTER TABLE caracterizacion_estudiante
             ADD CONSTRAINT fk_caracterizacion_alumnos
@@ -1156,12 +1404,320 @@ async function initDbConstraints() {
       END;
       $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS trg_check_caracterizacion_integrity ON caracterizacion_estudiante;
+      DROP TRIGGER IF EXISTS trg_check_caracterizacion_integrity ON caracterizacion_estudiante;
       CREATE TRIGGER trg_check_caracterizacion_integrity
       BEFORE INSERT OR UPDATE ON caracterizacion_estudiante
       FOR EACH ROW EXECUTE FUNCTION check_caracterizacion_integrity();
     `);
-    }
+
+    // ═══════════════════════════════════════════════════════
+    // DESARROLLO CURRICULAR (PIADI-301)
+    // ═══════════════════════════════════════════════════════
+    console.log('Applying database-level constraints, triggers, and SQL documentation for Desarrollo Curricular...');
+
+    // 1. Asegurar existencia de tablas para Desarrollo Curricular
+    await sequelize.query(`
+      CREATE TABLE IF NOT EXISTS rendimiento_asignatura (
+        id SERIAL PRIMARY KEY,
+        rut INTEGER NOT NULL,
+        "codCli" VARCHAR(50),
+        "ramoEquiv" VARCHAR(50) NOT NULL,
+        seccion INTEGER,
+        anio INTEGER NOT NULL,
+        periodo INTEGER NOT NULL,
+        "notaFinal" DECIMAL(3, 1),
+        "estadoAsignatura" VARCHAR(20) NOT NULL DEFAULT 'APROBADO',
+        asistencia DECIMAL(5, 2),
+        "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS practicas (
+        id SERIAL PRIMARY KEY,
+        rut INTEGER NOT NULL,
+        "codCli" VARCHAR(50),
+        anio INTEGER NOT NULL,
+        periodo INTEGER NOT NULL,
+        "tipoPractica" VARCHAR(100) NOT NULL,
+        estado VARCHAR(50) NOT NULL,
+        "fechaInicio" DATE,
+        "fechaTermino" DATE,
+        horas INTEGER,
+        empresa VARCHAR(150),
+        "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS titulacion (
+        id SERIAL PRIMARY KEY,
+        rut INTEGER NOT NULL,
+        "codCli" VARCHAR(50),
+        "anioTitulacion" INTEGER NOT NULL,
+        periodo INTEGER NOT NULL,
+        cohorte INTEGER NOT NULL,
+        "tiempoNormativo" DECIMAL(4, 1),
+        "semestresCursados" DECIMAL(4, 1),
+        "fechaTitulacion" DATE,
+        distincion VARCHAR(50),
+        "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_rendimiento_alumno_asignatura_periodo 
+        ON rendimiento_asignatura (rut, "ramoEquiv", anio, periodo);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_practicas_alumno_periodo_tipo 
+        ON practicas (rut, anio, periodo, "tipoPractica");
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_titulacion_alumno_anio_periodo 
+        ON titulacion (rut, "anioTitulacion", periodo);
+
+      CREATE INDEX IF NOT EXISTS idx_rendimiento_anio_periodo ON rendimiento_asignatura (anio, periodo);
+      CREATE INDEX IF NOT EXISTS idx_rendimiento_rut ON rendimiento_asignatura (rut);
+      CREATE INDEX IF NOT EXISTS idx_practicas_anio_periodo ON practicas (anio, periodo);
+      CREATE INDEX IF NOT EXISTS idx_practicas_rut ON practicas (rut);
+      CREATE INDEX IF NOT EXISTS idx_titulacion_anio ON titulacion ("anioTitulacion");
+      CREATE INDEX IF NOT EXISTS idx_titulacion_rut ON titulacion (rut);
+    `);
+
+    // 2. Claves Foráneas (FK hacia alumnos y asignaturas)
+    await sequelize.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname IN ('fk_rendimiento_alumno', 'rendimiento_asignatura_rut_fkey')) THEN
+          ALTER TABLE rendimiento_asignatura
+            ADD CONSTRAINT fk_rendimiento_alumno FOREIGN KEY (rut)
+            REFERENCES alumnos(rut) ON UPDATE CASCADE ON DELETE CASCADE;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname IN ('fk_rendimiento_asignatura', 'rendimiento_asignatura_ramoEquiv_fkey')) THEN
+          ALTER TABLE rendimiento_asignatura
+            ADD CONSTRAINT fk_rendimiento_asignatura FOREIGN KEY ("ramoEquiv")
+            REFERENCES asignaturas("ramoEquiv") ON UPDATE CASCADE ON DELETE CASCADE;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname IN ('fk_practicas_alumno', 'practicas_rut_fkey')) THEN
+          ALTER TABLE practicas
+            ADD CONSTRAINT fk_practicas_alumno FOREIGN KEY (rut)
+            REFERENCES alumnos(rut) ON UPDATE CASCADE ON DELETE CASCADE;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname IN ('fk_titulacion_alumno', 'titulacion_rut_fkey')) THEN
+          ALTER TABLE titulacion
+            ADD CONSTRAINT fk_titulacion_alumno FOREIGN KEY (rut)
+            REFERENCES alumnos(rut) ON UPDATE CASCADE ON DELETE CASCADE;
+        END IF;
+      END $$;
+    `);
+
+    // 3. CHECK Constraints de Dominio
+    await sequelize.query(`
+      DO $$
+      BEGIN
+        ALTER TABLE rendimiento_asignatura DROP CONSTRAINT IF EXISTS chk_rendimiento_rut;
+        ALTER TABLE rendimiento_asignatura ADD CONSTRAINT chk_rendimiento_rut CHECK (rut > 0 AND rut <= 99999999);
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+      DO $$
+      BEGIN
+        ALTER TABLE rendimiento_asignatura DROP CONSTRAINT IF EXISTS chk_rendimiento_ramo;
+        ALTER TABLE rendimiento_asignatura ADD CONSTRAINT chk_rendimiento_ramo CHECK (TRIM("ramoEquiv") <> '');
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+      DO $$
+      BEGIN
+        ALTER TABLE rendimiento_asignatura DROP CONSTRAINT IF EXISTS chk_rendimiento_anio;
+        ALTER TABLE rendimiento_asignatura ADD CONSTRAINT chk_rendimiento_anio CHECK (anio >= 1990 AND anio <= 2100);
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+      DO $$
+      BEGIN
+        ALTER TABLE rendimiento_asignatura DROP CONSTRAINT IF EXISTS chk_rendimiento_periodo;
+        ALTER TABLE rendimiento_asignatura ADD CONSTRAINT chk_rendimiento_periodo CHECK (periodo >= 1 AND periodo <= 2);
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+      DO $$
+      BEGIN
+        ALTER TABLE rendimiento_asignatura DROP CONSTRAINT IF EXISTS chk_rendimiento_seccion;
+        ALTER TABLE rendimiento_asignatura ADD CONSTRAINT chk_rendimiento_seccion CHECK (seccion IS NULL OR seccion >= 1);
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+      DO $$
+      BEGIN
+        ALTER TABLE rendimiento_asignatura DROP CONSTRAINT IF EXISTS chk_rendimiento_nota;
+        ALTER TABLE rendimiento_asignatura ADD CONSTRAINT chk_rendimiento_nota CHECK ("notaFinal" IS NULL OR ("notaFinal" >= 1.0 AND "notaFinal" <= 7.0));
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+      DO $$
+      BEGIN
+        ALTER TABLE rendimiento_asignatura DROP CONSTRAINT IF EXISTS chk_rendimiento_asistencia;
+        ALTER TABLE rendimiento_asignatura ADD CONSTRAINT chk_rendimiento_asistencia CHECK (asistencia IS NULL OR (asistencia >= 0.0 AND asistencia <= 100.0));
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+      DO $$
+      BEGIN
+        ALTER TABLE rendimiento_asignatura DROP CONSTRAINT IF EXISTS chk_rendimiento_estado;
+        ALTER TABLE rendimiento_asignatura ADD CONSTRAINT chk_rendimiento_estado CHECK (UPPER(TRIM("estadoAsignatura")) IN ('APROBADO', 'REPROBADO'));
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+      DO $$
+      BEGIN
+        ALTER TABLE practicas DROP CONSTRAINT IF EXISTS chk_practicas_rut;
+        ALTER TABLE practicas ADD CONSTRAINT chk_practicas_rut CHECK (rut > 0 AND rut <= 99999999);
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+      DO $$
+      BEGIN
+        ALTER TABLE practicas DROP CONSTRAINT IF EXISTS chk_practicas_anio;
+        ALTER TABLE practicas ADD CONSTRAINT chk_practicas_anio CHECK (anio >= 1990 AND anio <= 2100);
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+      DO $$
+      BEGIN
+        ALTER TABLE practicas DROP CONSTRAINT IF EXISTS chk_practicas_periodo;
+        ALTER TABLE practicas ADD CONSTRAINT chk_practicas_periodo CHECK (periodo >= 1 AND periodo <= 2);
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+      DO $$
+      BEGIN
+        ALTER TABLE practicas DROP CONSTRAINT IF EXISTS chk_practicas_tipo;
+        ALTER TABLE practicas ADD CONSTRAINT chk_practicas_tipo CHECK (TRIM("tipoPractica") <> '');
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+      DO $$
+      BEGIN
+        ALTER TABLE practicas DROP CONSTRAINT IF EXISTS chk_practicas_estado;
+        ALTER TABLE practicas ADD CONSTRAINT chk_practicas_estado CHECK (TRIM(estado) <> '');
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+      DO $$
+      BEGIN
+        ALTER TABLE practicas DROP CONSTRAINT IF EXISTS chk_practicas_horas;
+        ALTER TABLE practicas ADD CONSTRAINT chk_practicas_horas CHECK (horas IS NULL OR horas >= 0);
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+      DO $$
+      BEGIN
+        ALTER TABLE practicas DROP CONSTRAINT IF EXISTS chk_practicas_fechas;
+        ALTER TABLE practicas ADD CONSTRAINT chk_practicas_fechas CHECK ("fechaInicio" IS NULL OR "fechaTermino" IS NULL OR "fechaTermino" >= "fechaInicio");
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+      DO $$
+      BEGIN
+        ALTER TABLE titulacion DROP CONSTRAINT IF EXISTS chk_titulacion_rut;
+        ALTER TABLE titulacion ADD CONSTRAINT chk_titulacion_rut CHECK (rut > 0 AND rut <= 99999999);
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+      DO $$
+      BEGIN
+        ALTER TABLE titulacion DROP CONSTRAINT IF EXISTS chk_titulacion_anio;
+        ALTER TABLE titulacion ADD CONSTRAINT chk_titulacion_anio CHECK ("anioTitulacion" >= 1990 AND "anioTitulacion" <= 2100);
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+      DO $$
+      BEGIN
+        ALTER TABLE titulacion DROP CONSTRAINT IF EXISTS chk_titulacion_periodo;
+        ALTER TABLE titulacion ADD CONSTRAINT chk_titulacion_periodo CHECK (periodo >= 1 AND periodo <= 2);
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+      DO $$
+      BEGIN
+        ALTER TABLE titulacion DROP CONSTRAINT IF EXISTS chk_titulacion_cohorte;
+        ALTER TABLE titulacion ADD CONSTRAINT chk_titulacion_cohorte CHECK (cohorte >= 1990 AND cohorte <= 2100);
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+      DO $$
+      BEGIN
+        ALTER TABLE titulacion DROP CONSTRAINT IF EXISTS chk_titulacion_anio_cohorte;
+        ALTER TABLE titulacion ADD CONSTRAINT chk_titulacion_anio_cohorte CHECK ("anioTitulacion" >= cohorte);
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+      DO $$
+      BEGIN
+        ALTER TABLE titulacion DROP CONSTRAINT IF EXISTS chk_titulacion_tiempo_normativo;
+        ALTER TABLE titulacion ADD CONSTRAINT chk_titulacion_tiempo_normativo CHECK ("tiempoNormativo" IS NULL OR "tiempoNormativo" > 0);
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+      DO $$
+      BEGIN
+        ALTER TABLE titulacion DROP CONSTRAINT IF EXISTS chk_titulacion_semestres;
+        ALTER TABLE titulacion ADD CONSTRAINT chk_titulacion_semestres CHECK ("semestresCursados" IS NULL OR "semestresCursados" > 0);
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    `);
+
+    // 4. Triggers de integridad y validación
+    await sequelize.query(`
+      CREATE OR REPLACE FUNCTION check_rendimiento_integrity()
+      RETURNS TRIGGER AS $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM alumnos WHERE rut = NEW.rut) THEN
+          RAISE EXCEPTION 'El estudiante con RUT % no existe en la tabla alumnos.', NEW.rut;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM asignaturas WHERE "ramoEquiv" = NEW."ramoEquiv") THEN
+          RAISE EXCEPTION 'La asignatura con código "%" no existe en la tabla asignaturas.', NEW."ramoEquiv";
+        END IF;
+        IF NEW."notaFinal" IS NOT NULL AND (NEW."notaFinal" < 1.0 OR NEW."notaFinal" > 7.0) THEN
+          RAISE EXCEPTION 'La nota final (%) debe estar entre 1.0 y 7.0.', NEW."notaFinal";
+        END IF;
+        IF NEW.asistencia IS NOT NULL AND (NEW.asistencia < 0.0 OR NEW.asistencia > 100.0) THEN
+          RAISE EXCEPTION 'El porcentaje de asistencia (%) debe estar entre 0.0 y 100.0.', NEW.asistencia;
+        END IF;
+        IF UPPER(TRIM(NEW."estadoAsignatura")) NOT IN ('APROBADO', 'REPROBADO') THEN
+          RAISE EXCEPTION 'El estado de la asignatura "%" es inválido. Debe ser APROBADO o REPROBADO.', NEW."estadoAsignatura";
+        END IF;
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql;
+
+      DROP TRIGGER IF EXISTS trg_check_rendimiento_integrity ON rendimiento_asignatura;
+      CREATE TRIGGER trg_check_rendimiento_integrity
+      BEFORE INSERT OR UPDATE ON rendimiento_asignatura
+      FOR EACH ROW EXECUTE FUNCTION check_rendimiento_integrity();
+    `);
+
+    await sequelize.query(`
+      CREATE OR REPLACE FUNCTION check_practica_integrity()
+      RETURNS TRIGGER AS $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM alumnos WHERE rut = NEW.rut) THEN
+          RAISE EXCEPTION 'El estudiante con RUT % no existe en la tabla alumnos.', NEW.rut;
+        END IF;
+        IF NEW."fechaInicio" IS NOT NULL AND NEW."fechaTermino" IS NOT NULL AND NEW."fechaTermino" < NEW."fechaInicio" THEN
+          RAISE EXCEPTION 'La fecha de término (%) no puede ser anterior a la fecha de inicio (%).', NEW."fechaTermino", NEW."fechaInicio";
+        END IF;
+        IF NEW.horas IS NOT NULL AND NEW.horas < 0 THEN
+          RAISE EXCEPTION 'La cantidad de horas de práctica (%) no puede ser negativa.', NEW.horas;
+        END IF;
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql;
+
+      DROP TRIGGER IF EXISTS trg_check_practica_integrity ON practicas;
+      CREATE TRIGGER trg_check_practica_integrity
+      BEFORE INSERT OR UPDATE ON practicas
+      FOR EACH ROW EXECUTE FUNCTION check_practica_integrity();
+    `);
+
+    await sequelize.query(`
+      CREATE OR REPLACE FUNCTION check_titulacion_integrity()
+      RETURNS TRIGGER AS $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM alumnos WHERE rut = NEW.rut) THEN
+          RAISE EXCEPTION 'El estudiante con RUT % no existe en la tabla alumnos.', NEW.rut;
+        END IF;
+        IF NEW."anioTitulacion" < NEW.cohorte THEN
+          RAISE EXCEPTION 'El año de titulación (%) no puede ser anterior a la cohorte de ingreso (%).', NEW."anioTitulacion", NEW.cohorte;
+        END IF;
+        IF NEW."semestresCursados" IS NOT NULL AND NEW."semestresCursados" <= 0 THEN
+          RAISE EXCEPTION 'Los semestres cursados (%) deben ser un número positivo.', NEW."semestresCursados";
+        END IF;
+        IF NEW."tiempoNormativo" IS NOT NULL AND NEW."tiempoNormativo" <= 0 THEN
+          RAISE EXCEPTION 'El tiempo normativo (%) debe ser un número positivo.', NEW."tiempoNormativo";
+        END IF;
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql;
+
+      DROP TRIGGER IF EXISTS trg_check_titulacion_integrity ON titulacion;
+      CREATE TRIGGER trg_check_titulacion_integrity
+      BEFORE INSERT OR UPDATE ON titulacion
+      FOR EACH ROW EXECUTE FUNCTION check_titulacion_integrity();
+    `);
 
     console.log('Database-level constraints, triggers, and SQL documentation applied successfully.');
   } catch (error) {
